@@ -1,0 +1,20 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports: !override
+      - "127.0.0.1:8109:3000"
+    environment:
+      - TZ=America/New_York
+      - COOKIE_SECURE=true
+      - APP_URL=https://sprout.kautiontape.com
+      - ROOT_DOMAIN=kautiontape.com
+
+volumes:
+  db-data:
+    name: sprout-track_db-data
+  env-data:
+    name: sprout-track_env-data
+  files:
+    name: sprout-track_files

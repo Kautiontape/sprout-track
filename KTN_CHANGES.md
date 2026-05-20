@@ -11,6 +11,8 @@ upstream rebase to decide whether each item is still needed.
   `sprout-track_env-data`, `sprout-track_files`) so existing data attaches.
 - **`.github/workflows/deploy-ktn.yml`** — Self-hosted runner on ktn, deploys on
   push to `main` via `git fetch` + `git reset --hard` + `docker compose up -d --build`.
+- **`ktn-scripts/`** — Local helpers (sync from upstream, manual deploy, logs,
+  restart, backup). See `ktn-scripts/README.md`.
 
 ## Dockerfile
 

@@ -119,90 +119,78 @@ export default function PinLogin({
     checkAuthSettings();
   }, [familySlug]);
 
-  // No-op onChange handlers — all keyboard input is handled by handleKeyDown.
+  // No-op onChange handlers — keyboard input is handled by the window keydown listener below.
   // Inputs are readOnly so onChange never fires, but React requires the prop on controlled inputs.
   const handleLoginIdChange = () => {};
   const handlePinChange = () => {};
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Determine which field is actually focused based on the target element
-    const target = e.target as HTMLInputElement;
-    const isLoginIdField = target.placeholder === 'ID';
-    const isPinField = target.placeholder === 'PIN';
+  const processKey = (key: string, preventDefault: () => void) => {
+    if (lockoutTime) return;
 
-    // Allow only numbers, backspace, delete, arrow keys, tab, and enter
     const allowedKeys = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Tab', 'Enter'];
-    const isNumber = /^[0-9]$/.test(e.key);
+    const isNumber = /^[0-9]$/.test(key);
+    if (!isNumber && !allowedKeys.includes(key)) return;
 
-    if (!isNumber && !allowedKeys.includes(e.key)) {
-      e.preventDefault();
-    }
+    preventDefault();
 
-    // Handle number input based on which field is focused
     if (isNumber) {
-      e.preventDefault();
-      if (isLoginIdField && loginId.length < 2) {
-        const newLoginId = loginId + e.key;
+      if (activeInput === 'loginId' && loginId.length < 2) {
+        const newLoginId = loginId + key;
         setLoginId(newLoginId);
         setError('');
-        setActiveInput('loginId');
-
-        // Auto-switch to PIN when login ID is complete
         if (newLoginId.length === 2) {
           setActiveInput('pin');
-          setTimeout(() => {
-            pinInputRef.current?.focus();
-          }, 0);
+          setTimeout(() => pinInputRef.current?.focus(), 0);
         }
-      } else if (isPinField && pin.length < 10) {
-        setPin(pin + e.key);
+      } else if (activeInput === 'pin' && pin.length < 10) {
+        setPin(pin + key);
         setError('');
-        setActiveInput('pin');
       }
+      return;
     }
 
-    // Handle backspace and delete for removing characters
-    if (e.key === 'Backspace' || e.key === 'Delete') {
-      e.preventDefault();
-      if (isLoginIdField && loginId.length > 0) {
+    if (key === 'Backspace' || key === 'Delete') {
+      if (activeInput === 'loginId' && loginId.length > 0) {
         setLoginId(loginId.slice(0, -1));
         setError('');
-        setActiveInput('loginId');
-      } else if (isPinField && pin.length > 0) {
+      } else if (activeInput === 'pin' && pin.length > 0) {
         setPin(pin.slice(0, -1));
         setError('');
-        setActiveInput('pin');
-      } else if (isPinField && pin.length === 0 && loginId.length > 0 && authType === 'CARETAKER') {
-        // Switch back to login ID if PIN is empty and there's content in login ID
+      } else if (activeInput === 'pin' && pin.length === 0 && loginId.length > 0 && authType === 'CARETAKER') {
         setActiveInput('loginId');
-        setTimeout(() => {
-          loginIdInputRef.current?.focus();
-        }, 0);
+        setTimeout(() => loginIdInputRef.current?.focus(), 0);
       }
+      return;
     }
 
-    // Handle tab and arrow key navigation between fields
-    if ((e.key === 'Tab' || e.key === 'ArrowUp' || e.key === 'ArrowDown') && authType === 'CARETAKER') {
-      e.preventDefault();
-      if (isLoginIdField) {
-        setActiveInput('pin');
-        setTimeout(() => {
-          pinInputRef.current?.focus();
-        }, 0);
-      } else if (isPinField) {
-        setActiveInput('loginId');
-        setTimeout(() => {
-          loginIdInputRef.current?.focus();
-        }, 0);
-      }
+    if ((key === 'Tab' || key === 'ArrowUp' || key === 'ArrowDown') && authType === 'CARETAKER') {
+      const next = activeInput === 'loginId' ? 'pin' : 'loginId';
+      setActiveInput(next);
+      setTimeout(() => {
+        (next === 'pin' ? pinInputRef : loginIdInputRef).current?.focus();
+      }, 0);
+      return;
     }
 
-    // Handle enter key for authentication
-    if (e.key === 'Enter') {
-      e.preventDefault();
+    if (key === 'Enter') {
       handleAuthenticate();
     }
   };
+
+  // Window-level keyboard listener so typing works without first clicking a field
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      // Let users type normally in non-readonly inputs (e.g. admin password)
+      if (target instanceof HTMLInputElement && !target.readOnly) return;
+      if (target instanceof HTMLTextAreaElement) return;
+      if (target && target.isContentEditable) return;
+      if (adminMode) return;
+      processKey(e.key, () => e.preventDefault());
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  });
 
   // Handle number pad input for either login ID or PIN
   const handleNumberClick = (number: string) => {
@@ -593,7 +581,6 @@ export default function PinLogin({
                   ref={loginIdInputRef}
                   value={loginId}
                   onChange={handleLoginIdChange}
-                  onKeyDown={handleKeyDown}
                   className="text-center text-xl sr-only"
                   placeholder="ID"
                   maxLength={2}
@@ -608,7 +595,6 @@ export default function PinLogin({
                   type="password"
                   value={pin}
                   onChange={handlePinChange}
-                  onKeyDown={handleKeyDown}
                   className="text-center text-xl font-semibold sr-only"
                   placeholder="PIN"
                   maxLength={10}
@@ -652,7 +638,6 @@ export default function PinLogin({
                   type="password"
                   value={pin}
                   onChange={handlePinChange}
-                  onKeyDown={handleKeyDown}
                   className="text-center text-xl font-semibold sr-only"
                   placeholder="PIN"
                   maxLength={10}

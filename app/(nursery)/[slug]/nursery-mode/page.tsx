@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense } from 'react';
-import { NurseryModeContainer } from '@/src/components/features/nursery-mode/NurseryModeContainer';
+import { NurseryMode } from '@/src/components/NurseryMode';
 
 export default function NurseryModePage() {
   return (
@@ -12,7 +12,7 @@ export default function NurseryModePage() {
         </div>
       }
     >
-      <NurseryModeContainer />
+      <NurseryMode />
     </Suspense>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useState, useRef } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import LoginSecurity from '@/src/components/LoginSecurity';
 import { useTheme } from '@/src/context/theme';
 import { useFamily } from '@/src/context/family';
@@ -9,9 +9,19 @@ import { useLocalization } from '@/src/context/localization';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/src/components/ui/select';
 import { FamilyResponse } from '@/app/api/types';
 
+// Only allow redirects to in-app paths under the current family slug.
+// Prevents open-redirect via crafted ?redirect=https://evil.example.
+function safeRedirectTarget(raw: string | null, familySlug: string): string | null {
+  if (!raw || !familySlug) return null;
+  if (!raw.startsWith(`/${familySlug}/`)) return null;
+  if (raw.startsWith('//')) return null;
+  return raw;
+}
+
 function FamilySlugPageContent() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const { theme } = useTheme();
   const { family, loading: familyLoading } = useFamily();
   const { t } = useLocalization();
@@ -22,6 +32,7 @@ function FamilySlugPageContent() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const hasRedirectedRef = useRef(false);
   const familySlug = params?.slug as string;
+  const redirectTarget = safeRedirectTarget(searchParams?.get('redirect') ?? null, familySlug);
 
   // Validate family slug exists first
   useEffect(() => {
@@ -124,11 +135,11 @@ function FamilySlugPageContent() {
       // Account holders and system admins don't need unlockTime, PIN-based users do
       if (authToken && (isAccountAuth || isSysAdmin || unlockTime)) {
         setIsAuthenticated(true);
-        // Redirect authenticated users to log-entry (one-time redirect)
+        // Redirect authenticated users to ?redirect= target if safe, otherwise log-entry
         if (!hasRedirectedRef.current && familySlug) {
           hasRedirectedRef.current = true;
-          const targetUrl = `/${familySlug}/log-entry`;
-          console.log('Redirecting authenticated user to log-entry:', targetUrl);
+          const targetUrl = redirectTarget || `/${familySlug}/log-entry`;
+          console.log('Redirecting authenticated user to:', targetUrl);
           // Use window.location for a hard navigation to ensure it works
           window.location.href = targetUrl;
         }
@@ -176,8 +187,8 @@ function FamilySlugPageContent() {
   // Handle successful authentication
   const handleUnlock = (caretakerId?: string) => {
     setIsAuthenticated(true);
-    // Redirect to main app after successful authentication
-    router.push(`/${familySlug}/log-entry`);
+    // Honor ?redirect= target if it was a same-family in-app path, otherwise log-entry
+    router.push(redirectTarget || `/${familySlug}/log-entry`);
   };
 
   // Handle family selection change

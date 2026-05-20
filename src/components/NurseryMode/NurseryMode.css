@@ -1,0 +1,139 @@
+.nursery-kiosk {
+  color-scheme: dark;
+  --bg: #0b0d18;
+  --panel: #161b2e;
+  --panel-2: #1f2640;
+  --ink: #e8eaf2;
+  --ink-dim: #8389a4;
+  --accent: #6c7cff;
+  --ok: #34c97a;
+  --err: #ff5a5f;
+  --warn: #f5a623;
+
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.35 -apple-system, system-ui, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  overscroll-behavior: none;
+  min-height: 100vh;
+  padding: 10px 12px calc(96px + env(safe-area-inset-bottom, 0px));
+  max-width: 520px;
+  margin: 0 auto;
+}
+.nursery-kiosk * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+.nursery-kiosk .nk-h-grid { margin-top: 14px; }
+.nursery-kiosk .nk-h-grid .nk-h2 { margin: 0 4px 6px; }
+
+.nursery-kiosk .nk-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.nursery-kiosk .nk-clock { font-size: 30px; font-weight: 600; letter-spacing: 0.5px; }
+.nursery-kiosk .nk-topright { display: flex; align-items: center; gap: 8px; }
+.nursery-kiosk .nk-name { font-size: 14px; color: var(--ink-dim); background: transparent; border: 0; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+.nursery-kiosk .nk-name:active { background: var(--panel); }
+.nursery-kiosk .nk-iconbtn { background: var(--panel); color: var(--ink); border: 0;
+  width: 36px; height: 36px; border-radius: 8px; font-size: 18px;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.nursery-kiosk .nk-iconbtn:active { background: var(--panel-2); }
+
+.nursery-kiosk .nk-babymenu { position: absolute; top: 56px; right: 12px; background: var(--panel-2);
+  border-radius: 10px; padding: 4px; z-index: 20; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+.nursery-kiosk .nk-babymenu button { display: block; width: 100%; text-align: left;
+  background: transparent; color: var(--ink); border: 0; padding: 10px 16px; border-radius: 6px;
+  font-size: 14px; min-height: 0; cursor: pointer; }
+.nursery-kiosk .nk-babymenu button.on { background: var(--accent); color: #fff; }
+.nursery-kiosk .nk-babymenu button:active { background: var(--panel); }
+
+.nursery-kiosk .nk-since { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; min-height: 22px; }
+.nursery-kiosk .nk-badge { font-size: 12px; color: var(--ink-dim); background: var(--panel);
+  padding: 4px 9px; border-radius: 999px; cursor: pointer; border: 0; }
+.nursery-kiosk .nk-badge:active { background: var(--panel-2); }
+
+.nursery-kiosk .nk-h2 { font-size: 11px; letter-spacing: 1.5px; color: var(--ink-dim);
+  margin: 14px 4px 6px; text-transform: uppercase; font-weight: 600; }
+.nursery-kiosk .nk-grid { display: grid; gap: 6px; grid-template-columns: 1fr 1fr 1fr; }
+.nursery-kiosk .nk-grid.two { grid-template-columns: 1fr 1fr; }
+.nursery-kiosk .nk-btn { background: var(--panel); color: var(--ink); border: 0;
+  padding: 14px 6px; border-radius: 10px; font-size: 14px; font-weight: 500;
+  min-height: 56px; cursor: pointer; }
+.nursery-kiosk .nk-btn:active { background: var(--panel-2); }
+.nursery-kiosk .nk-btn.primary { background: var(--accent); color: #fff; }
+.nursery-kiosk .nk-btn.danger { background: transparent; color: var(--err); }
+.nursery-kiosk .nk-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.nursery-kiosk .nk-btn.active { background: var(--accent); color: #fff; }
+
+.nursery-kiosk .nk-status { position: fixed; left: 50%; bottom: 0;
+  transform: translateX(-50%);
+  width: 100%; max-width: 520px;
+  padding: 6px 12px calc(6px + env(safe-area-inset-bottom, 0px));
+  font-size: 12px;
+  background: var(--panel); color: var(--ink-dim);
+  z-index: 10;
+  display: flex; align-items: center; gap: 12px; }
+.nursery-kiosk .nk-status .text { flex: 1; text-align: center; }
+.nursery-kiosk .nk-status .batt { font-variant-numeric: tabular-nums; }
+
+.nursery-kiosk .nk-toasts { position: fixed; left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 16px); max-width: 504px;
+  z-index: 30;
+  bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column-reverse; gap: 6px; pointer-events: none; }
+.nursery-kiosk .nk-toast { background: var(--panel-2); border-radius: 10px; padding: 8px 10px;
+  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px;
+  font-size: 14px; pointer-events: auto;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.4); overflow: hidden; position: relative; }
+.nursery-kiosk .nk-toast .lbl { font-weight: 500; }
+.nursery-kiosk .nk-toast.ok    .lbl::before { content: "✓ "; color: var(--ok); }
+.nursery-kiosk .nk-toast.err   .lbl::before { content: "✗ "; color: var(--err); }
+.nursery-kiosk .nk-toast.pend  .lbl::before { content: "⏱ "; color: var(--warn); }
+.nursery-kiosk .nk-toast .undo { background: transparent; color: var(--accent); border: 0;
+  padding: 6px 10px; font-size: 13px; font-weight: 600; min-height: 0; cursor: pointer; }
+.nursery-kiosk .nk-toast .undo:active { background: rgba(108,124,255,0.15); border-radius: 6px; }
+.nursery-kiosk .nk-toast .bar { position: absolute; left: 0; bottom: 0; height: 2px;
+  background: var(--accent); width: 100%; transform-origin: left;
+  animation: nkToastBar var(--ms, 5000ms) linear forwards; }
+@keyframes nkToastBar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+.nursery-kiosk .nk-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  z-index: 40; display: flex; align-items: stretch; justify-content: center; }
+.nursery-kiosk .nk-sheet { background: var(--bg); width: 100%; max-width: 520px;
+  padding: 14px 14px 18px;
+  display: flex; flex-direction: column; }
+.nursery-kiosk .nk-sheet h3 { margin: 0 0 10px; font-size: 18px; font-weight: 600; }
+.nursery-kiosk .nk-amount-row { display: flex; align-items: center; justify-content: center;
+  gap: 14px; margin: 4px 0 6px; min-height: 70px; }
+.nursery-kiosk .nk-amount { font-size: 56px; font-weight: 600; text-align: right;
+  letter-spacing: 1px; line-height: 1; min-width: 140px; }
+.nursery-kiosk .nk-unit-picker { display: flex; flex-direction: column; gap: 4px; }
+.nursery-kiosk .nk-unit-picker button { background: var(--panel); color: var(--ink-dim); border: 0;
+  padding: 8px 0; border-radius: 8px; font-size: 14px; font-weight: 600;
+  min-height: 0; min-width: 56px; cursor: pointer; }
+.nursery-kiosk .nk-unit-picker button.on { background: var(--accent); color: #fff; }
+.nursery-kiosk .nk-unit-picker button:active { background: var(--panel-2); }
+.nursery-kiosk .nk-unit-picker button.on:active { background: var(--accent); }
+.nursery-kiosk .nk-types { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 14px; justify-content: center; }
+.nursery-kiosk .nk-chip { background: var(--panel); color: var(--ink); border: 0;
+  padding: 9px 14px; border-radius: 999px; font-size: 14px; min-height: 0; cursor: pointer; }
+.nursery-kiosk .nk-chip.on { background: var(--accent); color: #fff; }
+.nursery-kiosk .nk-numpad { display: grid; gap: 6px; grid-template-columns: 1fr 1fr 1fr; margin-bottom: 12px; }
+.nursery-kiosk .nk-numpad button { background: var(--panel); color: var(--ink); border: 0;
+  font-size: 22px; padding: 16px 0; min-height: 60px; border-radius: 10px; cursor: pointer; }
+.nursery-kiosk .nk-numpad button:active { background: var(--panel-2); }
+.nursery-kiosk .nk-modal-actions { display: grid; gap: 6px; grid-template-columns: 1fr 1fr; }
+.nursery-kiosk .nk-modal-actions button { padding: 16px 0; font-size: 16px; min-height: 60px;
+  background: var(--panel); color: var(--ink); border: 0; border-radius: 10px; cursor: pointer; }
+.nursery-kiosk .nk-modal-actions button.primary { background: var(--accent); color: #fff; }
+.nursery-kiosk .nk-modal-actions button.danger { color: var(--err); }
+.nursery-kiosk .nk-modal-actions.three { grid-template-columns: 1fr 1fr 1fr; }
+
+.nursery-kiosk .nk-field { margin: 6px 0; }
+.nursery-kiosk .nk-field label { display: block; font-size: 11px; color: var(--ink-dim);
+  text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+.nursery-kiosk .nk-field input[type="time"] { background: var(--panel); color: var(--ink);
+  border: 0; padding: 12px; border-radius: 8px; font-size: 18px; width: 100%;
+  color-scheme: dark; }
+.nursery-kiosk .nk-field input[type="number"] { background: var(--panel); color: var(--ink);
+  border: 0; padding: 12px; border-radius: 8px; font-size: 18px; width: 100%; }
+.nursery-kiosk .nk-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.nursery-kiosk .nk-row .nk-chip { flex: 1; min-width: 60px; }

@@ -37,6 +37,29 @@ upstream rebase to decide whether each item is still needed.
   `docker-compose.ktn.yml` from the build context so docs-only changes don't
   invalidate the `COPY . .` layer cache.
 
+## Features
+
+- **Nursery Mode rewrite** — `src/components/NurseryMode/` replaces upstream's
+  heavier nursery mode (`src/components/features/nursery-mode/` + related
+  hooks/settings/route, all deleted). Port of the standalone
+  `sprout-track-nursery-kiosk` HTML page, but integrated into the app: hits the
+  normal authed `/api/feed-log`, `/api/diaper-log`, `/api/sleep-log`,
+  `/api/pump-log` routes directly (no API-key webhook layer), supports real
+  edit-most-recent and undo-as-revert/re-POST. Breast L/R, Sleep, Pump all use a
+  tap-to-start / tap-to-stop pattern; <5s = silent mistap discard. Will conflict
+  with upstream changes to nursery-mode files — when that happens, prefer the
+  ktn version. URL stays at `/{slug}/nursery-mode`.
+- **`app/(app)/[slug]/page.tsx`** — Login page honors a `?redirect=` query
+  param (validated to only allow same-family in-app paths) so unauthed visitors
+  to `/{slug}/nursery-mode` land back there after auth instead of `/log-entry`.
+
+## Fixes
+
+- **`app/context/timezone.tsx`** — Coerce `Etc/Unknown` (returned by
+  default-launched Chromium under Playwright and some restricted WebViews) to
+  `UTC` instead of crashing the root layout when downstream code calls
+  `Intl.DateTimeFormat` with it.
+
 ## Sync workflow
 
 ```

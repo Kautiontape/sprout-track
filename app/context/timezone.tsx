@@ -141,16 +141,24 @@ export function TimezoneProvider({ children }: { children: ReactNode }) {
     console.log('Detecting timezone...');
     
     try {
-      // Detect timezone synchronously if possible
-      const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      
+      // Detect timezone synchronously if possible.
+      // Some browsers (notably default-launched Chromium under Playwright) return
+      // 'Etc/Unknown', which Intl.DateTimeFormat will then throw on. Coerce to UTC.
+      let detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: detectedTimezone }).format(new Date());
+      } catch {
+        console.warn(`Detected timezone "${detectedTimezone}" rejected by Intl; falling back to UTC`);
+        detectedTimezone = 'UTC';
+      }
+
       // Check if DST is active
       const now = new Date();
       const isDSTActive = isDaylightSavingTime(now, detectedTimezone);
-      
+
       console.log(`Detected timezone: ${detectedTimezone}, DST active: ${isDSTActive}`);
       console.log(`Current time: ${now.toISOString()}, Offset: ${now.getTimezoneOffset()}`);
-      
+
       // Update state
       setUserTimezone(detectedTimezone);
       setIsDST(isDSTActive);

@@ -43,7 +43,13 @@ db/*.db
 # Docker
 Dockerfile
 docker-compose.yml
+docker-compose.ktn.yml
 .dockerignore
+
+# ktn fork
+ktn-scripts/
+KTN_CHANGES.md
+TODO.md
 
 # Scripts
 scripts/backup.sh

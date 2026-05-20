@@ -3,6 +3,11 @@ name: Deploy to ktn
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'ktn-scripts/**'
+      - '.dockerignore'
+      - '.gitignore'
   workflow_dispatch:
 
 jobs:
@@ -14,5 +19,5 @@ jobs:
           cd /opt/services/sprout-track
           git fetch origin
           git reset --hard origin/main
-          docker compose up -d --build
+          docker compose -f docker-compose.yml -f docker-compose.ktn.yml up -d --build
           docker image prune -f

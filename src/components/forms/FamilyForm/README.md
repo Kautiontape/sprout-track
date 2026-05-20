@@ -116,7 +116,7 @@ The component is organized into logical sections:
 ### Client-Side Validation
 - Required field validation
 - URL slug format validation (lowercase, numbers, hyphens only)
-- PIN length validation (6-10 digits)
+- PIN length validation (4-10 digits)
 - Login ID format validation (2 digits, not "00")
 - Email format validation (if applicable)
 

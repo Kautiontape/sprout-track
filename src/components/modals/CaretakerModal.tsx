@@ -96,8 +96,8 @@ export default function CaretakerModal({
   }, [isEditing, open]);
 
   const validatePIN = () => {
-    if (formData.securityPin.length < 6) {
-      setError('PIN must be at least 6 digits');
+    if (formData.securityPin.length < 4) {
+      setError('PIN must be at least 4 digits');
       return false;
     }
     if (formData.securityPin.length > 10) {
@@ -267,13 +267,13 @@ export default function CaretakerModal({
                 }
               }}
               className="w-full"
-              placeholder="Enter 6-10 digit PIN"
-              minLength={6}
+              placeholder="Enter 4-10 digit PIN"
+              minLength={4}
               maxLength={10}
               pattern="\d*"
               required
             />
-            <p className="text-xs text-gray-500 mt-1">{t('PIN must be between 6 and 10 digits')}</p>
+            <p className="text-xs text-gray-500 mt-1">{t('PIN must be between 4 and 10 digits')}</p>
           </div>
           <div>
             <label className="form-label">{t('Confirm PIN')}</label>
@@ -288,7 +288,7 @@ export default function CaretakerModal({
               }}
               className="w-full"
               placeholder="Confirm PIN"
-              minLength={6}
+              minLength={4}
               maxLength={10}
               pattern="\d*"
               required

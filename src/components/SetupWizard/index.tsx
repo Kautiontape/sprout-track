@@ -167,8 +167,8 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, token, initialSet
     } else if (stage === 2) {
       // Validate security setup
       if (useSystemPin) {
-        if (systemPin.length < 6 || systemPin.length > 10) {
-          setError(t('PIN must be between 6 and 10 digits'));
+        if (systemPin.length < 4 || systemPin.length > 10) {
+          setError(t('PIN must be between 4 and 10 digits'));
           return;
         }
         
@@ -455,8 +455,8 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, token, initialSet
       return;
     }
     
-    if (newCaretaker.securityPin.length < 6 || newCaretaker.securityPin.length > 10) {
-      setError(t('PIN must be between 6 and 10 digits'));
+    if (newCaretaker.securityPin.length < 4 || newCaretaker.securityPin.length > 10) {
+      setError(t('PIN must be between 4 and 10 digits'));
       return;
     }
     

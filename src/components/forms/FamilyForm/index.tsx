@@ -311,8 +311,8 @@ export default function FamilyForm({
       return;
     }
     
-    if (newCaretaker.securityPin.length < 6 || newCaretaker.securityPin.length > 10) {
-      setError('PIN must be between 6 and 10 digits');
+    if (newCaretaker.securityPin.length < 4 || newCaretaker.securityPin.length > 10) {
+      setError('PIN must be between 4 and 10 digits');
       return;
     }
     
@@ -433,8 +433,8 @@ export default function FamilyForm({
 
     // Validate security setup
     if (useSystemPin) {
-      if (systemPin.length < 6 || systemPin.length > 10) {
-        setError(t('PIN must be between 6 and 10 digits'));
+      if (systemPin.length < 4 || systemPin.length > 10) {
+        setError(t('PIN must be between 4 and 10 digits'));
         return;
       }
       
@@ -843,7 +843,7 @@ export default function FamilyForm({
               {useSystemPin ? (
                 <div className="space-y-4">
                   <div>
-                    <Label className="text-sm font-medium text-gray-700 family-form-text mb-1">{t('System PIN (6-10 digits)')}</Label>
+                    <Label className="text-sm font-medium text-gray-700 family-form-text mb-1">{t('System PIN (4-10 digits)')}</Label>
                     <Input
                       type="password"
                       value={systemPin}
@@ -855,7 +855,7 @@ export default function FamilyForm({
                       }}
                       placeholder={t("Enter PIN")}
                       disabled={loading}
-                      minLength={6}
+                      minLength={4}
                       maxLength={10}
                     />
                   </div>
@@ -872,7 +872,7 @@ export default function FamilyForm({
                       }}
                       placeholder={t("Confirm PIN")}
                       disabled={loading}
-                      minLength={6}
+                      minLength={4}
                       maxLength={10}
                     />
                   </div>
@@ -943,7 +943,7 @@ export default function FamilyForm({
                         />
                       </div>
                       <div>
-                        <Label className="text-sm font-medium text-gray-700 family-form-text mb-1">{t('PIN (6-10 digits)')}</Label>
+                        <Label className="text-sm font-medium text-gray-700 family-form-text mb-1">{t('PIN (4-10 digits)')}</Label>
                         <Input
                           type="password"
                           value={newCaretaker.securityPin}
@@ -955,7 +955,7 @@ export default function FamilyForm({
                           }}
                           placeholder={t("PIN")}
                           disabled={loading}
-                          minLength={6}
+                          minLength={4}
                           maxLength={10}
                         />
                       </div>

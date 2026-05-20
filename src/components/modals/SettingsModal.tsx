@@ -224,7 +224,7 @@ export default function SettingsModal({
                     {t('Change PIN')}
                   </Button>
                 </div>
-                <p className="text-sm text-gray-500 mt-1">{t('PIN must be between 6 and 10 digits')}</p>
+                <p className="text-sm text-gray-500 mt-1">{t('PIN must be between 4 and 10 digits')}</p>
               </div>
             </div>
             

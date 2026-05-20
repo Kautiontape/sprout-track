@@ -313,8 +313,8 @@ export default function PinLogin({
     }
 
     // Don't attempt authentication if PIN is too short
-    if (pin.length < 6) {
-      setError(t('Please enter a PIN with at least 6 digits'));
+    if (pin.length < 4) {
+      setError(t('Please enter a PIN with at least 4 digits'));
       setActiveInput('pin');
       return;
     }
@@ -423,7 +423,7 @@ export default function PinLogin({
   // Handle secret admin mode activation
   const handleGoButtonClick = () => {
     // If button is enabled, perform normal authentication
-    const isButtonDisabled = !!lockoutTime || (authType === 'CARETAKER' && loginId.length !== 2) || (pin.length < 6 && !adminMode) || (adminMode && !adminPassword.trim());
+    const isButtonDisabled = !!lockoutTime || (authType === 'CARETAKER' && loginId.length !== 2) || (pin.length < 4 && !adminMode) || (adminMode && !adminPassword.trim());
 
     if (!isButtonDisabled) {
       handleAuthenticate();
@@ -569,8 +569,8 @@ export default function PinLogin({
                     onClick={handleFocusPin}
                   >
                     {pin.length === 0 ? (
-                      // Show 6 placeholder dots when no input
-                      Array.from({ length: 6 }).map((_, i) => (
+                      // Show 4 placeholder dots when no input
+                      Array.from({ length: 4 }).map((_, i) => (
                         <div
                           key={i}
                           className={`w-3 h-3 rounded-full ${activeInput === 'pin' ? 'bg-gray-300 security-dot-focus' : 'bg-gray-200/50 security-dot-placeholder'}`}
@@ -578,7 +578,7 @@ export default function PinLogin({
                       ))
                     ) : (
                       // Show actual number of dots for entered digits
-                      Array.from({ length: Math.max(pin.length, 6) }).map((_, i) => (
+                      Array.from({ length: Math.max(pin.length, 4) }).map((_, i) => (
                         <div
                           key={i}
                           className={`w-3 h-3 rounded-full ${i < pin.length ? 'bg-teal-600 security-dot-active' : 'bg-gray-200/50 security-dot-placeholder'}`}
@@ -630,8 +630,8 @@ export default function PinLogin({
                   onClick={handleFocusPin}
                 >
                   {pin.length === 0 ? (
-                    // Show 6 placeholder dots when no input
-                    Array.from({ length: 6 }).map((_, i) => (
+                    // Show 4 placeholder dots when no input
+                    Array.from({ length: 4 }).map((_, i) => (
                       <div
                         key={i}
                         className={`w-3 h-3 rounded-full ${activeInput === 'pin' ? 'bg-gray-300 security-dot-focus' : 'bg-gray-200/50 security-dot-placeholder'}`}
@@ -639,7 +639,7 @@ export default function PinLogin({
                     ))
                   ) : (
                     // Show actual number of dots for entered digits
-                    Array.from({ length: Math.max(pin.length, 6) }).map((_, i) => (
+                    Array.from({ length: Math.max(pin.length, 4) }).map((_, i) => (
                       <div
                         key={i}
                         className={`w-3 h-3 rounded-full ${i < pin.length ? 'bg-teal-600 security-dot-active' : 'bg-gray-200/50 security-dot-placeholder'}`}

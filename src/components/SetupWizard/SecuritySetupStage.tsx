@@ -203,7 +203,7 @@ const SecuritySetupStage: React.FC<SecuritySetupStageProps> = ({
               className={cn(styles.formLabel, "setup-wizard-form-label")}
               htmlFor="systemPin"
             >
-              {isAccountAuth ? t("System-wide PIN (6-10 digits)") : t("System PIN (6-10 digits)")}
+              {isAccountAuth ? t("System-wide PIN (4-10 digits)") : t("System PIN (4-10 digits)")}
             </label>
             <Input
               id="systemPin"
@@ -217,7 +217,7 @@ const SecuritySetupStage: React.FC<SecuritySetupStageProps> = ({
               }}
               placeholder={isAccountAuth ? t("Enter system-wide PIN") : t("Enter PIN")}
               className={cn(styles.formInput, "setup-wizard-form-input")}
-              minLength={6}
+              minLength={4}
               maxLength={10}
             />
           </div>
@@ -240,7 +240,7 @@ const SecuritySetupStage: React.FC<SecuritySetupStageProps> = ({
               }}
               placeholder={isAccountAuth ? t("Confirm system-wide PIN") : t("Confirm PIN")}
               className={cn(styles.formInput, "setup-wizard-form-input")}
-              minLength={6}
+              minLength={4}
               maxLength={10}
             />
           </div>
@@ -355,7 +355,7 @@ const SecuritySetupStage: React.FC<SecuritySetupStageProps> = ({
                   className={cn(styles.formLabel, "setup-wizard-form-label")}
                   htmlFor="securityPin"
                 >
-                  {isAccountAuth && !accountOwnerAdded ? t("Your Personal PIN (6-10 digits)") : isAccountAuth && accountOwnerAdded ? t("New Caretaker PIN (6-10 digits)") : t("PIN (6-10 digits)")}
+                  {isAccountAuth && !accountOwnerAdded ? t("Your Personal PIN (4-10 digits)") : isAccountAuth && accountOwnerAdded ? t("New Caretaker PIN (4-10 digits)") : t("PIN (4-10 digits)")}
                 </label>
                 <Input
                   id="securityPin"
@@ -369,7 +369,7 @@ const SecuritySetupStage: React.FC<SecuritySetupStageProps> = ({
                   }}
                   placeholder={t("PIN")}
                   className={cn(styles.formInput, "setup-wizard-form-input")}
-                  minLength={6}
+                  minLength={4}
                   maxLength={10}
                 />
               </div>

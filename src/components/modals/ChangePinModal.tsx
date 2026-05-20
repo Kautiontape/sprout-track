@@ -83,8 +83,8 @@ export default function ChangePinModal({
       return;
     }
     
-    if (newPin.length < 6) {
-      setError('PIN must be at least 6 digits');
+    if (newPin.length < 4) {
+      setError('PIN must be at least 4 digits');
       return;
     }
     if (newPin.length > 10) {
@@ -130,7 +130,7 @@ export default function ChangePinModal({
           </DialogTitle>
           <DialogDescription>
             {step === 'verify' && 'Please enter your current PIN to continue'}
-            {step === 'new' && 'Enter a new PIN between 6-10 digits'}
+            {step === 'new' && 'Enter a new PIN between 4-10 digits'}
             {step === 'confirm' && 'Enter your new PIN again to confirm'}
           </DialogDescription>
         </DialogHeader>
@@ -172,12 +172,12 @@ export default function ChangePinModal({
                   }
                 }}
                 placeholder="Enter new PIN"
-                minLength={6}
+                minLength={4}
                 maxLength={10}
                 pattern="\d*"
                 disabled={hasCaretakers}
               />
-              <p className="text-sm text-gray-500">{t('PIN must be between 6 and 10 digits')}</p>
+              <p className="text-sm text-gray-500">{t('PIN must be between 4 and 10 digits')}</p>
             </div>
           )}
 
@@ -197,7 +197,7 @@ export default function ChangePinModal({
                   }
                 }}
                 placeholder="Confirm new PIN"
-                minLength={6}
+                minLength={4}
                 maxLength={10}
                 pattern="\d*"
                 disabled={hasCaretakers}

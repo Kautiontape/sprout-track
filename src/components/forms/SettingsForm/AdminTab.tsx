@@ -106,7 +106,7 @@ export default function AdminTab({
           {localAuthType === 'CARETAKER' ? (
             <p className="text-sm text-red-500 mt-1">{t('System PIN is disabled when using caretaker authentication.')}</p>
           ) : (
-            <p className="text-sm text-gray-500 mt-1">{t('PIN must be between 6 and 10 digits')}</p>
+            <p className="text-sm text-gray-500 mt-1">{t('PIN must be between 4 and 10 digits')}</p>
           )}
         </div>
 

@@ -151,7 +151,7 @@ The SetupWizard handles two different authentication scenarios with different wo
 2. **Stage 2: Security Setup**
    - User chooses between system-wide PIN or individual caretaker PINs
    - For system-wide PIN:
-     - User enters and confirms a PIN (6-10 digits)
+     - User enters and confirms a PIN (4-10 digits)
      - Immediately updates family settings and system caretaker
    - For individual caretaker PINs:
      - User adds one or more caretakers with login IDs, names, roles, and PINs

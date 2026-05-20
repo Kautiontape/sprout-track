@@ -80,7 +80,7 @@ export default function SettingsForm({
   const [savingFamily, setSavingFamily] = useState(false);
 
   // Local authType state for immediate UI feedback
-  const [localAuthType, setLocalAuthType] = useState<'SYSTEM' | 'CARETAKER'>('SYSTEM');
+  const [localAuthType, setLocalAuthType] = useState<'SYSTEM' | 'CARETAKER' | 'CARETAKER_PIN'>('SYSTEM');
 
   useEffect(() => {
     setLocalSelectedBabyId(selectedBabyId || '');
@@ -312,7 +312,7 @@ export default function SettingsForm({
     }
   };
 
-  const handleAuthTypeChange = (newAuthType: 'SYSTEM' | 'CARETAKER') => {
+  const handleAuthTypeChange = (newAuthType: 'SYSTEM' | 'CARETAKER' | 'CARETAKER_PIN') => {
     setLocalAuthType(newAuthType);
     handleSettingsChange({ authType: newAuthType });
   };

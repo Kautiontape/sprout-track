@@ -57,27 +57,32 @@ async function postHandler(req: NextRequest, authContext: AuthResult) {
       );
     }
 
-    const existingCaretaker = await prisma.caretaker.findFirst({
-      where: {
-        loginId: body.loginId,
-        deletedAt: null,
-        familyId: targetFamilyId,
-      },
-    });
-
-    if (existingCaretaker) {
-      return NextResponse.json<ApiResponse<CaretakerResponse>>(
-        {
-          success: false,
-          error: 'Login ID is already in use in this family. Please choose a different one.',
+    // Login ID uniqueness is only enforced when a non-empty loginId is provided
+    // (in CARETAKER_PIN mode the field is omitted and caretakers are identified by PIN).
+    if (body.loginId) {
+      const existingCaretaker = await prisma.caretaker.findFirst({
+        where: {
+          loginId: body.loginId,
+          deletedAt: null,
+          familyId: targetFamilyId,
         },
-        { status: 400 }
-      );
+      });
+
+      if (existingCaretaker) {
+        return NextResponse.json<ApiResponse<CaretakerResponse>>(
+          {
+            success: false,
+            error: 'Login ID is already in use in this family. Please choose a different one.',
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const caretaker = await prisma.caretaker.create({
       data: {
         ...body,
+        loginId: body.loginId || '',
         familyId: targetFamilyId,
       },
     });

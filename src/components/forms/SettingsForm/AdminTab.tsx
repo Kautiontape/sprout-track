@@ -14,10 +14,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/src/components/ui/select';
-import { Switch } from '@/src/components/ui/switch';
 import { useLocalization } from '@/src/context/localization';
 import ApiKeyManager from './ApiKeyManager';
 import ApiGuide from './ApiGuide';
+
+type AuthType = 'SYSTEM' | 'CARETAKER' | 'CARETAKER_PIN';
 
 interface AdminTabProps {
   settings: Settings | null;
@@ -25,9 +26,9 @@ interface AdminTabProps {
   babies: Baby[];
   loading: boolean;
   familyId?: string;
-  localAuthType: 'SYSTEM' | 'CARETAKER';
+  localAuthType: AuthType;
   onSettingsChange: (updates: Partial<Settings>) => Promise<void>;
-  onAuthTypeChange: (authType: 'SYSTEM' | 'CARETAKER') => void;
+  onAuthTypeChange: (authType: AuthType) => void;
   // Caretaker management
   selectedCaretaker: Caretaker | null;
   onSelectedCaretakerChange: (caretaker: Caretaker | null) => void;
@@ -66,20 +67,29 @@ export default function AdminTab({
         <h3 className="form-label mb-4">{t('Authentication Settings')}</h3>
 
         <div className="space-y-4">
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-500">{t('System PIN')}</span>
-            <Switch
-              checked={localAuthType === 'CARETAKER'}
-              onCheckedChange={(checked) => onAuthTypeChange(checked ? 'CARETAKER' : 'SYSTEM')}
+          <div>
+            <Label className="form-label mb-1">{t('Login Mode')}</Label>
+            <Select
+              value={localAuthType}
+              onValueChange={(v) => onAuthTypeChange(v as AuthType)}
               disabled={loading}
-              variant="green"
-            />
-            <span className="text-sm text-gray-500">{t('Caretaker IDs')}</span>
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="SYSTEM">{t('System PIN')}</SelectItem>
+                <SelectItem value="CARETAKER">{t('Caretaker ID + PIN')}</SelectItem>
+                <SelectItem value="CARETAKER_PIN">{t('Caretaker PIN only')}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <p className="text-sm text-gray-500">
               {localAuthType === 'CARETAKER'
                 ? t('Use individual caretaker login IDs and PINs')
+                : localAuthType === 'CARETAKER_PIN'
+                ? t('Use individual caretaker PINs only — each caretaker is identified by their PIN.')
                 : t('Use shared system PIN for all users')
               }
             </p>
@@ -103,7 +113,7 @@ export default function AdminTab({
               {t('Change PIN')}
             </Button>
           </div>
-          {localAuthType === 'CARETAKER' ? (
+          {localAuthType !== 'SYSTEM' ? (
             <p className="text-sm text-red-500 mt-1">{t('System PIN is disabled when using caretaker authentication.')}</p>
           ) : (
             <p className="text-sm text-gray-500 mt-1">{t('PIN must be between 4 and 10 digits')}</p>

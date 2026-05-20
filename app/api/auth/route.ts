@@ -12,6 +12,16 @@ import { ACCESS_TOKEN_LIFE, createRefreshToken, setRefreshTokenCookie } from '..
 const JWT_SECRET = process.env.JWT_SECRET || 'baby-tracker-jwt-secret';
 const TOKEN_EXPIRATION = ACCESS_TOKEN_LIFE;
 
+// Minimum elapsed time (ms) before a failed-auth response is returned,
+// to slow down brute-force attempts.
+const MIN_FAILED_AUTH_MS = 5000;
+async function applyFailedAuthDelay(startTime: number) {
+  const elapsed = Date.now() - startTime;
+  if (elapsed < MIN_FAILED_AUTH_MS) {
+    await new Promise(resolve => setTimeout(resolve, MIN_FAILED_AUTH_MS - elapsed));
+  }
+}
+
 // Authentication endpoint for caretakers or system PIN
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
@@ -375,6 +385,7 @@ export async function POST(req: NextRequest) {
       // If authType is CARETAKER, block system PIN authentication
       if (!loginId) {
         recordFailedAttempt(ip);
+        await applyFailedAuthDelay(startTime);
         return NextResponse.json<ApiResponse<null>>(
           {
             success: false,
@@ -383,6 +394,108 @@ export async function POST(req: NextRequest) {
           { status: 401 }
         );
       }
+    } else if (authType === 'CARETAKER_PIN') {
+      // PIN-only authentication: identify the caretaker by their PIN alone.
+      const matches = await prisma.caretaker.findMany({
+        where: {
+          securityPin,
+          inactive: false,
+          deletedAt: null,
+          loginId: { not: '00' },
+          ...(targetFamily ? { familyId: targetFamily.id } : {}),
+        },
+        include: { family: true },
+      });
+
+      if (matches.length > 1) {
+        // Duplicate PINs across caretakers — refuse to guess.
+        recordFailedAttempt(ip);
+        await applyFailedAuthDelay(startTime);
+        return NextResponse.json<ApiResponse<null>>(
+          {
+            success: false,
+            error: 'This PIN matches multiple caretakers. Contact your administrator to resolve the conflict.',
+          },
+          { status: 409 }
+        );
+      }
+
+      const caretaker = matches[0];
+      if (caretaker) {
+        const tokenData: any = {
+          id: caretaker.id,
+          name: caretaker.name,
+          type: caretaker.type,
+          role: (caretaker as any).role || 'USER',
+          familyId: caretaker.familyId,
+          familySlug: caretaker.family?.slug,
+          authType,
+          isAccountAuth: false,
+        };
+        if (targetFamily?.account) {
+          tokenData.betaparticipant = targetFamily.account.betaparticipant;
+          tokenData.trialEnds = targetFamily.account.trialEnds?.toISOString();
+          tokenData.planExpires = targetFamily.account.planExpires?.toISOString();
+          tokenData.planType = targetFamily.account.planType;
+        }
+
+        const token = jwt.sign(tokenData, JWT_SECRET, { expiresIn: `${TOKEN_EXPIRATION}s` });
+
+        const response = NextResponse.json<ApiResponse<{
+          id: string;
+          name: string;
+          type: string | null;
+          role: string;
+          token: string;
+          familyId: string | null;
+          familySlug: string | null;
+        }>>({
+          success: true,
+          data: {
+            id: caretaker.id,
+            name: caretaker.name,
+            type: caretaker.type,
+            role: (caretaker as any).role || 'USER',
+            token,
+            familyId: caretaker.familyId,
+            familySlug: caretaker.family?.slug || null,
+          },
+        });
+
+        response.cookies.set('caretakerId', caretaker.id, {
+          httpOnly: true,
+          secure: process.env.COOKIE_SECURE === 'true',
+          sameSite: 'strict',
+          maxAge: TOKEN_EXPIRATION,
+          path: '/',
+        });
+
+        resetFailedAttempts(ip);
+
+        const refreshToken = createRefreshToken({
+          userId: caretaker.id,
+          authType: authType as 'CARETAKER' | 'SYSTEM',
+          familyId: caretaker.familyId,
+          accountId: null,
+        });
+        setRefreshTokenCookie(response, refreshToken);
+
+        logApiCall({
+          method: req.method,
+          path: '/api/auth',
+          status: 200,
+          durationMs: Date.now() - startTime,
+          ip,
+          userAgent,
+          caretakerId: caretaker.id,
+          familyId: caretaker.familyId ?? undefined,
+          requestBody: { ...requestBody, securityPin: '[REDACTED]' },
+          responseBody: { success: true, data: { id: caretaker.id, name: caretaker.name, familySlug: caretaker.family?.slug } },
+        }).catch(err => console.error('Failed to log API call:', err));
+
+        return response;
+      }
+      // No match — fall through to generic failure path below.
     }
 
     // Handle caretaker authentication (when loginId is provided)
@@ -404,6 +517,7 @@ export async function POST(req: NextRequest) {
       // Security check: If authType is CARETAKER and this is a system caretaker (loginId '00'), deny access
       if (caretaker && caretaker.loginId === '00' && authType === 'CARETAKER') {
         recordFailedAttempt(ip);
+        await applyFailedAuthDelay(startTime);
         return NextResponse.json<ApiResponse<null>>(
           {
             success: false,
@@ -428,6 +542,7 @@ export async function POST(req: NextRequest) {
         if (regularCaretakerCount > 0) {
           // Record failed attempt for security
           recordFailedAttempt(ip);
+          await applyFailedAuthDelay(startTime);
           return NextResponse.json<ApiResponse<null>>(
             {
               success: false,
@@ -541,6 +656,7 @@ export async function POST(req: NextRequest) {
     // If we get here, authentication failed
     // Record the failed attempt
     recordFailedAttempt(ip);
+    await applyFailedAuthDelay(startTime);
 
     // Provide a more specific error message if family validation failed
     const errorMessage = targetFamily

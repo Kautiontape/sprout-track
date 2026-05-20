@@ -22,7 +22,7 @@ export default function PinLogin({
   const [loginId, setLoginId] = useState<string>('');
   const [pin, setPin] = useState<string>('');
   const [error, setError] = useState<string>('');
-  const [authType, setAuthType] = useState<'SYSTEM' | 'CARETAKER'>('SYSTEM');
+  const [authType, setAuthType] = useState<'SYSTEM' | 'CARETAKER' | 'CARETAKER_PIN'>('SYSTEM');
   const [activeInput, setActiveInput] = useState<'loginId' | 'pin'>('loginId');
 
   // Admin mode state
@@ -100,8 +100,8 @@ export default function PinLogin({
             if (familyAuthType === 'CARETAKER') {
               setActiveInput('loginId');
             } else {
+              // SYSTEM and CARETAKER_PIN both use a single PIN field
               setActiveInput('pin');
-              // Focus the PIN input for SYSTEM auth type
               setTimeout(() => {
                 pinInputRef.current?.focus();
               }, 0);
@@ -479,9 +479,11 @@ export default function PinLogin({
         <p id="pin-description" className="text-sm text-gray-500 login-description">
           {adminMode
             ? t('Please enter the system administrator password')
-            : (authType === 'SYSTEM'
+            : authType === 'SYSTEM'
               ? t('Please enter your family security PIN')
-              : t('Please enter your login ID and security PIN'))
+              : authType === 'CARETAKER_PIN'
+                ? t('Please enter your security PIN')
+                : t('Please enter your login ID and security PIN')
           }
         </p>
         {adminMode && (

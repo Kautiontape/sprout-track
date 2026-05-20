@@ -196,7 +196,7 @@ export type CaretakerResponse = Omit<Caretaker, 'createdAt' | 'updatedAt' | 'del
 };
 
 export interface CaretakerCreate {
-  loginId: string;
+  loginId?: string;
   name: string;
   type?: string;
   inactive?: boolean;

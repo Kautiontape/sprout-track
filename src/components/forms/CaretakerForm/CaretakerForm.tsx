@@ -59,6 +59,8 @@ export default function CaretakerForm({
   const [isFirstCaretaker, setIsFirstCaretaker] = useState(false);
   const [existingCaretakers, setExistingCaretakers] = useState<string[]>([]);
   const [loginIdError, setLoginIdError] = useState('');
+  const [authType, setAuthType] = useState<'SYSTEM' | 'CARETAKER' | 'CARETAKER_PIN' | null>(null);
+  const usesLoginId = authType !== 'CARETAKER_PIN';
 
   // Reset form when form opens/closes or caretaker changes
   useEffect(() => {
@@ -160,6 +162,35 @@ export default function CaretakerForm({
       };
       
       fetchCaretakers();
+
+      // Fetch current authType so the form knows whether to require a Login ID
+      const fetchAuthType = async () => {
+        try {
+          const token = localStorage.getItem('authToken');
+          let familyId: string | null = null;
+          let isSysAdmin = false;
+          if (token) {
+            try {
+              const payload = JSON.parse(atob(token.split('.')[1]));
+              isSysAdmin = payload.isSysAdmin || false;
+              if (isSysAdmin) {
+                const familyContext = sessionStorage.getItem('sysadmin-family-context');
+                if (familyContext) familyId = JSON.parse(familyContext).id;
+              }
+            } catch {}
+          }
+          let url = '/api/settings';
+          if (isSysAdmin && familyId) url += `?familyId=${familyId}`;
+          const response = await fetch(url, { headers: { 'Authorization': token ? `Bearer ${token}` : '' } });
+          if (response.ok) {
+            const data = await response.json();
+            if (data?.data?.authType) setAuthType(data.data.authType);
+          }
+        } catch (error) {
+          console.error('Error fetching authType:', error);
+        }
+      };
+      fetchAuthType();
     }
   }, [isEditing, isOpen, caretaker?.id]);
 
@@ -183,26 +214,28 @@ export default function CaretakerForm({
     e.preventDefault();
     if (isSubmitting) return;
 
-    // Validate form
-    if (!formData.loginId.trim()) {
-      setError(t('Login ID is required'));
-      return;
-    }
+    // Validate Login ID only when the auth mode requires it
+    if (usesLoginId) {
+      if (!formData.loginId.trim()) {
+        setError(t('Login ID is required'));
+        return;
+      }
 
-    if (formData.loginId.length !== 2) {
-      setError(t('Login ID must be exactly 2 digits'));
-      return;
-    }
+      if (formData.loginId.length !== 2) {
+        setError(t('Login ID must be exactly 2 digits'));
+        return;
+      }
 
-    if (!/^\d{2}$/.test(formData.loginId)) {
-      setError(t('Login ID must contain only digits'));
-      return;
-    }
+      if (!/^\d{2}$/.test(formData.loginId)) {
+        setError(t('Login ID must contain only digits'));
+        return;
+      }
 
-    // Check for client-side login ID validation errors
-    if (loginIdError) {
-      setError(loginIdError);
-      return;
+      // Check for client-side login ID validation errors
+      if (loginIdError) {
+        setError(loginIdError);
+        return;
+      }
     }
 
     if (!formData.name.trim()) {
@@ -324,33 +357,35 @@ export default function CaretakerForm({
     >
       <form onSubmit={handleSubmit} className="h-full flex flex-col overflow-hidden">
         <FormPageContent className={caretakerFormStyles.content}>
-          <div>
-            <label className="form-label">{t('Login ID')}</label>
-            <Input
-              value={formData.loginId}
-              onChange={(e) => {
-                const value = e.target.value.replace(/\D/g, '');
-                // Only allow digits up to 2 characters
-                if (value.length <= 2) {
-                  setFormData({ ...formData, loginId: value });
-                }
-              }}
-              className={`w-full ${loginIdError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
-              placeholder={t("Enter 2-digit ID")}
-              maxLength={2}
-              required
-              autoComplete="off"
-              inputMode="numeric"
-              pattern="\d*"
-            />
-            {loginIdError ? (
-              <p className="text-xs text-red-500 mt-1">{loginIdError}</p>
-            ) : (
-              <p className="text-xs text-gray-500 mt-1">
-                {t('Login ID must be exactly 2 digits (currently:')} {formData.loginId.length}/2)
-              </p>
-            )}
-          </div>
+          {usesLoginId && (
+            <div>
+              <label className="form-label">{t('Login ID')}</label>
+              <Input
+                value={formData.loginId}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, '');
+                  // Only allow digits up to 2 characters
+                  if (value.length <= 2) {
+                    setFormData({ ...formData, loginId: value });
+                  }
+                }}
+                className={`w-full ${loginIdError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
+                placeholder={t("Enter 2-digit ID")}
+                maxLength={2}
+                required
+                autoComplete="off"
+                inputMode="numeric"
+                pattern="\d*"
+              />
+              {loginIdError ? (
+                <p className="text-xs text-red-500 mt-1">{loginIdError}</p>
+              ) : (
+                <p className="text-xs text-gray-500 mt-1">
+                  {t('Login ID must be exactly 2 digits (currently:')} {formData.loginId.length}/2)
+                </p>
+              )}
+            </div>
+          )}
           <div>
             <label className="form-label">{t('Name')}</label>
             <Input

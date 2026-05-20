@@ -78,6 +78,8 @@ RUN mkdir -p /app/env && \
     ln -sf /app/env/.env /app/.env
 
 # Build the application
+# ktn: raise heap (Next.js typecheck OOMs on 2GB-RAM hosts at the default ~1GB)
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN npm run build
 
 # Remove build-only dependencies to reduce image size

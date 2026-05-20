@@ -12,6 +12,13 @@ upstream rebase to decide whether each item is still needed.
 - **`.github/workflows/deploy-ktn.yml`** — Self-hosted runner on ktn, deploys on
   push to `main` via `git fetch` + `git reset --hard` + `docker compose up -d --build`.
 
+## Dockerfile
+
+- **`ENV NODE_OPTIONS=--max-old-space-size=2048`** before `npm run build`. ktn has
+  only 2 GB RAM; Next.js's TypeScript pass OOMs at the default ~1 GB heap. With
+  2 GB of swap available the build spills but completes. Revisit if upstream
+  reworks the build step (rebase conflict candidate).
+
 ## App
 
 (none yet)

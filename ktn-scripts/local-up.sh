@@ -8,6 +8,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Force BuildKit on for the cache mounts in Dockerfile to work
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
+
 docker compose -f docker-compose.yml up -d --build
 docker compose -f docker-compose.yml ps
 echo

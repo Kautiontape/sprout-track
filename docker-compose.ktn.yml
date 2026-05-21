@@ -18,3 +18,13 @@ volumes:
     name: sprout-track_env-data
   files:
     name: sprout-track_files
+
+# Pin the default network to a subnet that does not overlap with the home LAN
+# (192.168.1.0/24, reachable over Headscale subnet routing). Docker's default
+# address pool spills into 192.168.0.0/16 once 172.x /16s are exhausted, which
+# made the container treat the Hue Bridge IP as link-local.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 10.200.0.0/24

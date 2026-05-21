@@ -35,6 +35,12 @@ interface OpenSessionSnap {
   id: string;
   startTime: number;
 }
+interface HueButton {
+  id: string;
+  label: string;
+  sceneId: string;
+  order: number;
+}
 
 const REFRESH_MS = 5 * 60 * 1000;
 const CLOCK_MS = 30_000;
@@ -122,6 +128,8 @@ export function NurseryMode() {
   const [openPump, setOpenPump] = useState<OpenSessionSnap | null>(null);
   const [openBreast, setOpenBreast] = useState<{ id: string; side: 'LEFT' | 'RIGHT'; startTime: number } | null>(null);
   const [, setBreastTick] = useState(0); // 1s tick while a breast session is open
+  const [hueButtons, setHueButtons] = useState<HueButton[]>([]);
+  const [hueBusy, setHueBusy] = useState<string | null>(null);
 
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const toastSeq = useRef(0);
@@ -274,6 +282,30 @@ export function NurseryMode() {
     toastTimers.current.forEach(clearTimeout);
     toastTimers.current.clear();
   }, []);
+
+  // --- load Hue config (scene buttons) once after auth ---
+  useEffect(() => {
+    if (!authChecked) return;
+    api<{ paired: boolean; buttons: HueButton[] }>('/api/hue')
+      .then((cfg) => setHueButtons(cfg?.buttons ?? []))
+      .catch(() => setHueButtons([]));
+  }, [authChecked]);
+
+  const activateScene = useCallback(async (btn: HueButton) => {
+    if (hueBusy) return;
+    setHueBusy(btn.id);
+    try {
+      await api('/api/hue/activate', {
+        method: 'POST',
+        body: JSON.stringify({ buttonId: btn.id }),
+      });
+      pushToast(btn.label, 'ok', { ms: 1500 });
+    } catch (e: any) {
+      pushToast(e?.message || t('Light failed'), 'err', { ms: 4000 });
+    } finally {
+      setHueBusy(null);
+    }
+  }, [hueBusy, pushToast, t]);
 
   // --- commit: immediate POST; undo = DELETE the created record ---
   const commitFeed = useCallback(async (body: any, label: string) => {
@@ -788,6 +820,25 @@ export function NurseryMode() {
           {openPump ? t('End Pump') : t('Start Pump')}
         </button>
       </div>
+
+      {hueButtons.length > 0 && (
+        <>
+          <h2 className="nk-h2">{t('Scenes')}</h2>
+          <div className="nk-scenes" role="group" aria-label={t('Nursery scenes')}>
+            {hueButtons.map((btn) => (
+              <button
+                key={btn.id}
+                type="button"
+                className={'nk-scene-btn' + (hueBusy === btn.id ? ' busy' : '')}
+                onClick={() => activateScene(btn)}
+                disabled={hueBusy !== null && hueBusy !== btn.id}
+              >
+                {btn.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="nk-status">
         <span className="text">{statusMsg}</span>

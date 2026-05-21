@@ -21,6 +21,7 @@ import { useLocalization } from '@/src/context/localization';
 import { useTimezone } from '@/app/context/timezone';
 import { Settings } from '@/app/api/types';
 import { DateFormatSetting, TimeFormatSetting } from '@/src/utils/dateFormat';
+import NurseryLightsSection from './NurseryLightsSection';
 
 interface FamilyData {
   id: string;
@@ -365,6 +366,9 @@ export default function ConfigTab({
           </div>
         </div>
       </div>
+
+      {/* Nursery Lights (Philips Hue) */}
+      <NurseryLightsSection />
 
       {/* System Administration - Only show in self-hosted mode */}
       {deploymentConfig?.deploymentMode !== 'saas' && (

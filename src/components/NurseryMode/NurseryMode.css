@@ -62,6 +62,17 @@
 .nursery-kiosk .nk-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .nursery-kiosk .nk-btn.active { background: var(--accent); color: #fff; }
 
+.nursery-kiosk .nk-scenes { display: flex; gap: 6px; overflow-x: auto; padding: 14px 0 4px;
+  scrollbar-width: none; -ms-overflow-style: none; }
+.nursery-kiosk .nk-scenes::-webkit-scrollbar { display: none; }
+.nursery-kiosk .nk-scene-btn { background: var(--panel); color: var(--ink); border: 0;
+  padding: 12px 16px; border-radius: 999px; font-size: 14px; font-weight: 500;
+  white-space: nowrap; flex-shrink: 0; min-height: 48px; cursor: pointer;
+  transition: background 0.1s; }
+.nursery-kiosk .nk-scene-btn:active { background: var(--panel-2); }
+.nursery-kiosk .nk-scene-btn.busy { background: var(--accent); color: #fff; opacity: 0.8; }
+.nursery-kiosk .nk-scene-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
 .nursery-kiosk .nk-status { position: fixed; left: 50%; bottom: 0;
   transform: translateX(-50%);
   width: 100%; max-width: 520px;

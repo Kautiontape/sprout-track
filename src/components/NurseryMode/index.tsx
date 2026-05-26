@@ -77,11 +77,18 @@ const hmToIso = (hm: string): string => {
 };
 
 function isAuthed(): boolean {
+  if (typeof window === 'undefined') return false;
   const t = localStorage.getItem('authToken');
   if (!t) return false;
   try {
     const payload = JSON.parse(atob(t.split('.')[1]));
     if (payload.exp && payload.exp * 1000 < Date.now()) return false;
+    // PIN-based caretakers also need unlockTime (handleLogout clears it
+    // alongside the token); we deliberately skip the idle-window check
+    // since this kiosk view doesn't refresh unlockTime on activity.
+    const isAccountAuth = !!payload.isAccountAuth;
+    const isSysAdmin = !!payload.isSysAdmin;
+    if (!isAccountAuth && !isSysAdmin && !localStorage.getItem('unlockTime')) return false;
     return true;
   } catch {
     return false;
@@ -151,16 +158,30 @@ export function NurseryMode() {
   const [editFeedUnit, setEditFeedUnit] = useState<'OZ' | 'ML'>('OZ');
   const [editFeedBottleType, setEditFeedBottleType] = useState('formula');
 
-  // --- auth gate: redirect to family login if no valid token ---
+  // --- auth gate ---
+  // Re-checks every 5s so mid-session invalidation (server blacklist, logout
+  // from another tab) flips to the PIN screen instead of leaving the page
+  // stuck on "Loading…". Uses window.location.replace so we exit the
+  // (nursery) route group cleanly even if the router is in a stuck state.
+  const redirectingRef = useRef(false);
   useEffect(() => {
     if (typeof window === 'undefined' || !slug) return;
-    if (!isAuthed()) {
-      const target = `/${slug}/nursery-mode`;
-      router.replace(`/${slug}?redirect=${encodeURIComponent(target)}`);
-      return;
-    }
-    setAuthChecked(true);
-  }, [router, slug]);
+
+    const check = () => {
+      if (redirectingRef.current) return;
+      if (!isAuthed()) {
+        redirectingRef.current = true;
+        const target = `/${slug}/nursery-mode`;
+        window.location.replace(`/${slug}?redirect=${encodeURIComponent(target)}`);
+        return;
+      }
+      setAuthChecked(true);
+    };
+
+    check();
+    const id = setInterval(check, 5000);
+    return () => clearInterval(id);
+  }, [slug]);
 
   // --- clock + ago refresh ---
   useEffect(() => {

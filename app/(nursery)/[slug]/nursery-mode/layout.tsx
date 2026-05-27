@@ -1,5 +1,6 @@
 'use client';
 
+import { useParams } from 'next/navigation';
 import { DeploymentProvider } from '@/app/context/deployment';
 import { LocalizationProvider } from '@/src/context/localization';
 import { FamilyProvider } from '@/src/context/family';
@@ -13,6 +14,9 @@ export default function NurseryLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const params = useParams();
+  const slug = (params?.slug as string) || '';
+
   const handleLogout = async () => {
     const token = localStorage.getItem('authToken');
 
@@ -35,7 +39,14 @@ export default function NurseryLayout({
     localStorage.removeItem('attempts');
     localStorage.removeItem('lockoutTime');
 
-    window.location.href = '/';
+    // Land on this family's PIN screen rather than the root home, so the
+    // user sees the login flow directly after a 401-driven logout.
+    if (slug) {
+      const target = `/${slug}/nursery-mode`;
+      window.location.href = `/${slug}?redirect=${encodeURIComponent(target)}`;
+    } else {
+      window.location.href = '/';
+    }
   };
 
   return (

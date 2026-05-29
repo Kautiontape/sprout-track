@@ -17,7 +17,8 @@ import {
   Eye,
   EyeOff,
   Baby,
-  Syringe
+  Syringe,
+  Info
 } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
 import { Button } from '@/src/components/ui/button';
@@ -63,9 +64,11 @@ interface StatTile {
   iconColor: string;
   borderColor: string;
   bgActiveColor: string;
+  // Optional breakdown shown in a popover (e.g. breast milk vs formula split)
+  breakdown?: { label: string; value: string }[];
 }
 
-const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({ 
+const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
   activities, 
   heatmapActivities,
   date, 
@@ -396,9 +399,12 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
 
     // Combined feed tile (bottle, breast, and solids)
     if (totalFeedCount > 0) {
-      // Format bottle feed amounts, splitting breast milk vs formula when mixed
+      // Format bottle feed amounts. The tile stays compact (total only); when more
+      // than one bottle type is present, the breast milk vs formula split is shown
+      // in a popover instead of widening the tile.
       const roundAmount = (n: number) => Math.round(n * 100) / 100;
       let formattedBottleAmounts = '';
+      let feedBreakdown: { label: string; value: string }[] | undefined;
       if (bottleFeedTotal > 0) {
         const unitLabel = preferredUnit.toLowerCase();
         const total = roundAmount(bottleFeedTotal);
@@ -408,8 +414,11 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
           { amount: otherBottleTotal, label: t('other'), isOther: true },
         ].filter(b => b.amount > 0);
         if (buckets.length >= 2) {
-          const breakdown = buckets.map(b => `${roundAmount(b.amount)} ${b.label}`).join(' / ');
-          formattedBottleAmounts = `${total} ${unitLabel} (${breakdown})`;
+          formattedBottleAmounts = `${total} ${unitLabel}`;
+          feedBreakdown = buckets.map(b => ({
+            label: b.label,
+            value: `${roundAmount(b.amount)} ${unitLabel}`,
+          }));
         } else if (buckets.length === 1 && !buckets[0].isOther) {
           formattedBottleAmounts = `${total} ${unitLabel} ${buckets[0].label}`;
         } else {
@@ -458,7 +467,8 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
         bgColor: 'bg-gray-50',
         iconColor: 'text-[#7dd3fc]', // sky-300 - matches timeline
         borderColor: 'border-gray-500',
-        bgActiveColor: 'bg-gray-100'
+        bgActiveColor: 'bg-gray-100',
+        breakdown: feedBreakdown
       });
     }
 
@@ -793,19 +803,31 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
           <>
             {statTiles.length > 0 ? (
               <div className="flex flex-wrap gap-0.5">
-                {statTiles.map((tile, index) => (
-                  <button
+                {statTiles.map((tile) => {
+                  const isFilterable = tile.filter !== null;
+                  const activate = () => {
+                    if (isFilterable) {
+                      onFilterChange(tile.filter === activeFilter ? null : tile.filter);
+                    }
+                  };
+                  return (
+                  // Rendered as a div (not a button) so the breakdown popover trigger can nest validly
+                  <div
                     key={tile.filter ? `${tile.filter}-${tile.label.toLowerCase().replace(/\s+/g, '-')}` : tile.label.toLowerCase().replace(/\s+/g, '-')}
-                    onClick={() => {
-                      // Only allow filtering if it's not the awake time tile
-                      if (tile.filter !== null) {
-                        onFilterChange(tile.filter === activeFilter ? null : tile.filter);
+                    role={isFilterable ? 'button' : undefined}
+                    tabIndex={isFilterable ? 0 : undefined}
+                    onClick={activate}
+                    onKeyDown={(e) => {
+                      // Only act when the tile itself is focused, not a nested control (the popover trigger)
+                      if (isFilterable && e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault();
+                        activate();
                       }
                     }}
                     className={`relative rounded-xl text-left transition-all duration-200 overflow-hidden ${
                       // Never show awake time tile as selected, only show selected state for filterable tiles
                       tile.filter !== null && activeFilter === tile.filter
-                        ? 'bg-gray-100 cursor-pointer scale-105' 
+                        ? 'bg-gray-100 cursor-pointer scale-105'
                         : tile.filter !== null
                         ? 'bg-transparent cursor-pointer'
                         : 'bg-transparent cursor-default'
@@ -819,15 +841,42 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
                           {tile.icon}
                         </div>
                       </div>
-                      
+
                       {/* Content */}
                       <div className="flex flex-col min-w-0">
                         <div className="text-base font-bold text-gray-800 leading-tight">{tile.value}</div>
-                        <div className="text-xs text-gray-600 font-medium leading-tight">{tile.label}</div>
+                        <div className="flex items-center gap-1 text-xs text-gray-600 font-medium leading-tight">
+                          <span>{tile.label}</span>
+                          {tile.breakdown && tile.breakdown.length > 0 && (
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button
+                                  type="button"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="flex-shrink-0 text-gray-400 hover:opacity-70 transition-opacity"
+                                  aria-label={t('Feed breakdown')}
+                                >
+                                  <Info className="h-3.5 w-3.5" />
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent align="start" className="w-auto p-2">
+                                <div className="flex flex-col gap-1 text-xs">
+                                  {tile.breakdown.map((part) => (
+                                    <div key={part.label} className="flex items-center justify-between gap-4">
+                                      <span className="text-gray-500 capitalize">{part.label}</span>
+                                      <span className="font-semibold text-gray-800 whitespace-nowrap">{part.value}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </PopoverContent>
+                            </Popover>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </button>
-                ))}
+                  </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="text-sm text-gray-500 text-center py-4">

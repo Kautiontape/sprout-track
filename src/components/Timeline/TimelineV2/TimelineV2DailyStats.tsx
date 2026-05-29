@@ -108,6 +108,9 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
     let totalFeedCount = 0;
     const preferredUnit = defaultBottleUnit || 'OZ';
     let bottleFeedTotal = 0;
+    let breastMilkBottleTotal = 0;
+    let formulaBottleTotal = 0;
+    let otherBottleTotal = 0;
     let leftBreastFeedMinutes = 0;
     let rightBreastFeedMinutes = 0;
     const solidsAmounts: Record<string, number> = {};
@@ -165,7 +168,22 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
             totalFeedCount++;
             const entryUnit = activity.unitAbbr || 'OZ';
             const amount = activity.amount || 0;
-            bottleFeedTotal += convertVolume(amount, entryUnit, preferredUnit);
+            const converted = convertVolume(amount, entryUnit, preferredUnit);
+            bottleFeedTotal += converted;
+            // Split the measured amount into breast milk vs formula by bottle type
+            const bottleType = (activity as any).bottleType;
+            if (bottleType === 'Breast Milk') {
+              breastMilkBottleTotal += converted;
+            } else if (bottleType === 'Formula') {
+              formulaBottleTotal += converted;
+            } else if (bottleType === 'Formula\\Breast') {
+              const bmConverted = convertVolume((activity as any).breastMilkAmount || 0, entryUnit, preferredUnit);
+              breastMilkBottleTotal += bmConverted;
+              formulaBottleTotal += Math.max(0, converted - bmConverted);
+            } else {
+              // Milk, Other, or uncategorized
+              otherBottleTotal += converted;
+            }
           } else if (activity.type === 'SOLIDS') {
             totalFeedCount++;
             // Track solids amounts by unit
@@ -378,10 +396,26 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
 
     // Combined feed tile (bottle, breast, and solids)
     if (totalFeedCount > 0) {
-      // Format bottle feed amounts
-      const formattedBottleAmounts = bottleFeedTotal > 0
-        ? `${Math.round(bottleFeedTotal * 100) / 100} ${preferredUnit.toLowerCase()}`
-        : '';
+      // Format bottle feed amounts, splitting breast milk vs formula when mixed
+      const roundAmount = (n: number) => Math.round(n * 100) / 100;
+      let formattedBottleAmounts = '';
+      if (bottleFeedTotal > 0) {
+        const unitLabel = preferredUnit.toLowerCase();
+        const total = roundAmount(bottleFeedTotal);
+        const buckets = [
+          { amount: breastMilkBottleTotal, label: t('breast') },
+          { amount: formulaBottleTotal, label: t('formula') },
+          { amount: otherBottleTotal, label: t('other'), isOther: true },
+        ].filter(b => b.amount > 0);
+        if (buckets.length >= 2) {
+          const breakdown = buckets.map(b => `${roundAmount(b.amount)} ${b.label}`).join(' / ');
+          formattedBottleAmounts = `${total} ${unitLabel} (${breakdown})`;
+        } else if (buckets.length === 1 && !buckets[0].isOther) {
+          formattedBottleAmounts = `${total} ${unitLabel} ${buckets[0].label}`;
+        } else {
+          formattedBottleAmounts = `${total} ${unitLabel}`;
+        }
+      }
       
       // Format solids amounts
       const formattedSolidsAmounts = Object.entries(solidsAmounts)

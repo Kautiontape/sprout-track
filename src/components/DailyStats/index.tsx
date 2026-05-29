@@ -143,7 +143,11 @@ export const DailyStats: React.FC<DailyStatsProps> = ({ activities, date, isLoad
     
     // For calculating consumed amounts
     const consumedAmounts: Record<string, number> = {};
-    
+    // Breakdown of bottle amounts by type (breast milk vs formula vs other), per unit
+    const breastMilkAmounts: Record<string, number> = {};
+    const formulaAmounts: Record<string, number> = {};
+    const otherBottleAmounts: Record<string, number> = {};
+
     // For counting bottle feeds
     let feedCount = 0;
     
@@ -217,6 +221,19 @@ export const DailyStats: React.FC<DailyStatsProps> = ({ activities, date, isLoad
               consumedAmounts[unit] = 0;
             }
             consumedAmounts[unit] += activity.amount;
+            // Split the measured amount into breast milk vs formula by bottle type
+            const bottleType = (activity as any).bottleType;
+            if (bottleType === 'Breast Milk') {
+              breastMilkAmounts[unit] = (breastMilkAmounts[unit] || 0) + activity.amount;
+            } else if (bottleType === 'Formula') {
+              formulaAmounts[unit] = (formulaAmounts[unit] || 0) + activity.amount;
+            } else if (bottleType === 'Formula\\Breast') {
+              const bm = (activity as any).breastMilkAmount || 0;
+              breastMilkAmounts[unit] = (breastMilkAmounts[unit] || 0) + bm;
+              formulaAmounts[unit] = (formulaAmounts[unit] || 0) + Math.max(0, activity.amount - bm);
+            } else {
+              otherBottleAmounts[unit] = (otherBottleAmounts[unit] || 0) + activity.amount;
+            }
           } else {
             // For other feed types (like BREAST with amount), just track amounts
             if (!consumedAmounts[unit]) {
@@ -395,9 +412,25 @@ export const DailyStats: React.FC<DailyStatsProps> = ({ activities, date, isLoad
     
     const awakeMinutes = totalElapsedMinutes - totalSleepMinutes;
     
-    // Format consumed amounts with feed count
+    // Format consumed amounts with feed count, splitting breast milk vs formula when mixed
+    const roundAmount = (n: number) => Math.round(n * 100) / 100;
     const formattedAmounts = Object.entries(consumedAmounts)
-      .map(([unit, amount]) => `${amount} ${unit.toLowerCase()}`)
+      .map(([unit, amount]) => {
+        const base = `${roundAmount(amount)} ${unit.toLowerCase()}`;
+        const buckets = [
+          { amount: breastMilkAmounts[unit] || 0, label: t('breast') },
+          { amount: formulaAmounts[unit] || 0, label: t('formula') },
+          { amount: otherBottleAmounts[unit] || 0, label: t('other'), isOther: true },
+        ].filter(b => b.amount > 0);
+        if (buckets.length >= 2) {
+          const breakdown = buckets.map(b => `${roundAmount(b.amount)} ${b.label}`).join(' / ');
+          return `${base} (${breakdown})`;
+        }
+        if (buckets.length === 1 && !buckets[0].isOther) {
+          return `${base} ${buckets[0].label}`;
+        }
+        return base;
+      })
       .join(', ');
     const formattedConsumed = feedCount > 0 
       ? `${feedCount} feed${feedCount !== 1 ? 's' : ''}, ${formattedAmounts}`

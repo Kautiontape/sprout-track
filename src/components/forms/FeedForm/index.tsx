@@ -242,11 +242,15 @@ export default function FeedForm({
           defaultSolidsUnit: data.data.defaultSolidsUnit || 'TBSP',
         });
         
-        // Set the default unit from settings
-        setFormData(prev => ({
-          ...prev,
-          unit: data.data.defaultBottleUnit || 'OZ'
-        }));
+        // Set the default unit from settings — but only for new entries.
+        // When editing, the unit is populated from the activity's own unitAbbr
+        // and must not be overwritten by this async settings fetch.
+        if (!activity) {
+          setFormData(prev => ({
+            ...prev,
+            unit: data.data.defaultBottleUnit || 'OZ'
+          }));
+        }
       }
     } catch (error) {
       console.error('Error fetching settings:', error);

@@ -45,7 +45,7 @@ interface HueButton {
 const REFRESH_MS = 5 * 60 * 1000;
 const CLOCK_MS = 30_000;
 const QUICK_CANCEL_MS = 5_000;
-const BOTTLE_TYPES = ['formula', 'breast milk', 'milk', 'other'];
+const BOTTLE_TYPES = ['Formula', 'Breast Milk', 'Milk', 'Other'];
 
 const pad = (n: number) => (n < 10 ? '0' + n : '' + n);
 const fmtClock = (d = new Date()) => (d.getHours() % 12 || 12) + ':' + pad(d.getMinutes());
@@ -145,7 +145,7 @@ export function NurseryMode() {
   // bottle modal
   const [bottleOpen, setBottleOpen] = useState(false);
   const [bottleAmount, setBottleAmount] = useState('0');
-  const [bottleType, setBottleType] = useState('formula');
+  const [bottleType, setBottleType] = useState('Formula');
   const [bottleUnit, setBottleUnit] = useState<'OZ' | 'ML'>('OZ');
 
   // edit modal
@@ -156,7 +156,7 @@ export function NurseryMode() {
   const [editFeedSide, setEditFeedSide] = useState<'LEFT' | 'RIGHT'>('LEFT');
   const [editFeedAmount, setEditFeedAmount] = useState('');
   const [editFeedUnit, setEditFeedUnit] = useState<'OZ' | 'ML'>('OZ');
-  const [editFeedBottleType, setEditFeedBottleType] = useState('formula');
+  const [editFeedBottleType, setEditFeedBottleType] = useState('Formula');
 
   // --- auth gate ---
   // Re-checks every 5s so mid-session invalidation (server blacklist, logout
@@ -595,7 +595,7 @@ export function NurseryMode() {
   // --- bottle modal ---
   const openBottle = () => {
     setBottleAmount('0');
-    setBottleType('formula');
+    setBottleType('Formula');
     setBottleUnit('OZ');
     setBottleOpen(true);
   };
@@ -628,7 +628,7 @@ export function NurseryMode() {
       setEditFeedSide((lastFeed.side as 'LEFT' | 'RIGHT') || 'LEFT');
       setEditFeedAmount(lastFeed.amount != null ? String(lastFeed.amount) : '');
       setEditFeedUnit((lastFeed.unitAbbr as 'OZ' | 'ML') || 'OZ');
-      setEditFeedBottleType(lastFeed.bottleType || 'formula');
+      setEditFeedBottleType(lastFeed.bottleType || 'Formula');
       setEditTime(fmtHM(lastFeed.time));
       setEditKind('feed');
     } else if (kind === 'diaper' && lastDiaper) {
@@ -892,7 +892,7 @@ export function NurseryMode() {
             <div className="nk-types">
               {BOTTLE_TYPES.map((bt) => (
                 <button key={bt} type="button" className={'nk-chip' + (bottleType === bt ? ' on' : '')} onClick={() => setBottleType(bt)}>
-                  {t(bt === 'breast milk' ? 'Breast milk' : bt === 'formula' ? 'Formula' : bt === 'milk' ? 'Milk' : 'Other')}
+                  {t(bt)}
                 </button>
               ))}
             </div>
@@ -955,7 +955,7 @@ export function NurseryMode() {
                   <div className="nk-types">
                     {BOTTLE_TYPES.map((bt) => (
                       <button key={bt} type="button" className={'nk-chip' + (editFeedBottleType === bt ? ' on' : '')} onClick={() => setEditFeedBottleType(bt)}>
-                        {t(bt === 'breast milk' ? 'Breast milk' : bt === 'formula' ? 'Formula' : bt === 'milk' ? 'Milk' : 'Other')}
+                        {t(bt)}
                       </button>
                     ))}
                   </div>

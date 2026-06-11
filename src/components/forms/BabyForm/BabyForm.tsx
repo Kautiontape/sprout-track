@@ -15,11 +15,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/src/components/ui/select';
-import { 
-  FormPage, 
-  FormPageContent, 
-  FormPageFooter 
+import {
+  FormPage,
+  FormPageFooter
 } from '@/src/components/ui/form-page';
+import { FormPageTab } from '@/src/components/ui/form-page/form-page.types';
+import DayNightFlipTab from './DayNightFlipTab';
+import {
+  FlipConfig,
+  DEFAULT_FLIP_CONFIG,
+  mergeFlipConfig,
+} from '@/src/components/DayNightFlip/protocol';
 import { cn } from '@/src/lib/utils';
 import { babyFormStyles } from './baby-form.styles';
 import { useToast } from '@/src/components/ui/toast';
@@ -57,6 +63,7 @@ export default function BabyForm({
   const { dateFormat } = useTimezone();
   const { showToast } = useToast();
   const [formData, setFormData] = useState(defaultFormData);
+  const [flipConfig, setFlipConfig] = useState<FlipConfig>(DEFAULT_FLIP_CONFIG);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Reset form when form opens/closes or baby changes
@@ -75,14 +82,24 @@ export default function BabyForm({
         feedWarningTime: baby.feedWarningTime || '03:00',
         diaperWarningTime: baby.diaperWarningTime || '02:00',
       });
+      setFlipConfig(mergeFlipConfig((baby as { dayNightFlipConfig?: string | null }).dayNightFlipConfig));
     } else if (!isOpen && !isSubmitting) {
       setFormData(defaultFormData);
+      setFlipConfig(DEFAULT_FLIP_CONFIG);
     }
   }, [baby?.id, isOpen, isSubmitting]); // Use baby.id instead of full baby object to prevent unnecessary resets
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     if (isSubmitting) return;
+    if (!formData.firstName || !formData.lastName || !formData.birthDate) {
+      showToast({
+        variant: 'error',
+        title: t('Error'),
+        message: t('Please fill in name and birth date'),
+        duration: 5000,
+      });
+      return;
+    }
 
     try {
       setIsSubmitting(true);
@@ -105,6 +122,7 @@ export default function BabyForm({
           id: baby?.id,
           birthDate: formData.birthDate,
           gender: formData.gender as Gender,
+          ...(isEditing ? { dayNightFlipConfig: JSON.stringify(flipConfig) } : {}),
         }),
       });
 
@@ -138,18 +156,8 @@ export default function BabyForm({
     }
   };
 
-  return (
-    <FormPage 
-      isOpen={isOpen} 
-      onClose={onClose}
-      title={isEditing ? t('Edit Baby') : t('Add New Baby')}
-      description={isEditing 
-        ? t("Update your baby's information") 
-        : t("Enter your baby's information to start tracking")
-      }
-    >
-      <form onSubmit={handleSubmit} className="h-full flex flex-col overflow-hidden">
-        <FormPageContent className={babyFormStyles.content}>
+  const basicInfoContent = (
+    <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="form-label">{t('First Name')}</label>
@@ -264,26 +272,56 @@ export default function BabyForm({
               </label>
             </div>
           )}
-        </FormPageContent>
-        <FormPageFooter>
-          <div className="flex justify-end space-x-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={isSubmitting}
-            >
-              {t('Cancel')}
-            </Button>
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? t('Saving...') : isEditing ? t('Update') : t('Save')}
-            </Button>
-          </div>
-        </FormPageFooter>
-      </form>
+    </div>
+  );
+
+  const tabs: FormPageTab[] = [
+    { id: 'basic', label: t('Basic Info'), content: basicInfoContent },
+    ...(isEditing
+      ? [{
+          id: 'flip',
+          label: t('Day/Night Flip'),
+          content: (
+            <DayNightFlipTab
+              config={flipConfig}
+              onChange={setFlipConfig}
+              birthDate={formData.birthDate}
+            />
+          ),
+        }]
+      : []),
+  ];
+
+  return (
+    <FormPage
+      isOpen={isOpen}
+      onClose={onClose}
+      title={isEditing ? t('Edit Baby') : t('Add New Baby')}
+      description={isEditing
+        ? t("Update your baby's information")
+        : t("Enter your baby's information to start tracking")
+      }
+      tabs={tabs}
+    >
+      <FormPageFooter>
+        <div className="flex justify-end space-x-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={isSubmitting}
+          >
+            {t('Cancel')}
+          </Button>
+          <Button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? t('Saving...') : isEditing ? t('Update') : t('Save')}
+          </Button>
+        </div>
+      </FormPageFooter>
     </FormPage>
   );
 }

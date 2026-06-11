@@ -223,6 +223,7 @@ model Baby {
   inactive          Boolean   @default(false)
   feedWarningTime   String    @default("03:00") // Default 3 hours
   diaperWarningTime String    @default("02:00") // Default 2 hours
+  dayNightFlipConfig String?  // JSON FlipConfig — see src/components/DayNightFlip/protocol.ts
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   deletedAt         DateTime?

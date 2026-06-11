@@ -6,6 +6,18 @@ import { toUTC, formatForResponse } from '../utils/timezone';
 import { withAuthContext, AuthResult } from '../utils/auth';
 import { checkWritePermission } from '../utils/writeProtection';
 
+// dayNightFlipConfig must be absent, null, or a JSON-object string
+function invalidFlipConfig(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value !== 'string') return true;
+  try {
+    const parsed = JSON.parse(value);
+    return typeof parsed !== 'object' || parsed === null || Array.isArray(parsed);
+  } catch {
+    return true;
+  }
+}
+
 async function handlePost(req: NextRequest, authContext: AuthResult) {
   // Check write permissions for expired accounts
   const writeCheck = checkWritePermission(authContext);
@@ -19,7 +31,14 @@ async function handlePost(req: NextRequest, authContext: AuthResult) {
     const requestBody = await req.json();
     const { familyId: bodyFamilyId, ...babyData } = requestBody;
     const body: BabyCreate = babyData;
-    
+
+    if (invalidFlipConfig(body.dayNightFlipConfig)) {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: 'dayNightFlipConfig must be a JSON object string' },
+        { status: 400 },
+      );
+    }
+
     // Determine target family ID - prefer auth context, but allow body override for setup auth, account auth, and sysadmin
     let targetFamilyId = userFamilyId;
     if (!userFamilyId && (isSetupAuth || isSysAdmin || isAccountAuth) && bodyFamilyId) {
@@ -85,7 +104,14 @@ async function handlePut(req: NextRequest, authContext: AuthResult) {
     const requestBody = await req.json();
     const { id, familyId: bodyFamilyId, ...updateData } = requestBody;
     const body: BabyUpdate = { id, ...updateData };
-    
+
+    if (invalidFlipConfig(body.dayNightFlipConfig)) {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: 'dayNightFlipConfig must be a JSON object string' },
+        { status: 400 },
+      );
+    }
+
     // For system administrators, allow familyId to be specified in request body
     let targetFamilyId = userFamilyId;
     if (!userFamilyId && isSysAdmin && bodyFamilyId) {

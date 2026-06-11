@@ -493,6 +493,7 @@ const FamilyPeopleTab: React.FC<FamilyPeopleTabProps> = ({
           createdAt: new Date(),
           updatedAt: new Date(),
           deletedAt: null,
+          dayNightFlipConfig: selectedBaby.dayNightFlipConfig ?? null,
           familyId: familyData.id
         } : null}
         onBabyChange={handleBabyFormClose}

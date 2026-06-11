@@ -99,6 +99,7 @@ export interface BabyData {
   inactive: boolean;
   feedWarningTime: string;
   diaperWarningTime: string;
+  dayNightFlipConfig?: string | null;
   age?: string;
 }
 

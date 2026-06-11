@@ -38,13 +38,13 @@ export function deriveFacts(
     .filter(l => l.endTime)
     .map(l => new Date(l.endTime as string))
     .sort(byTimeDesc);
-  let lastWakeTime = wakes[0] ?? null;
+  let lastWakeTime: Date | null = wakes.length > 0 ? wakes[0] : null;
 
   const opens = raw.sleepLogs
     .filter(l => !l.endTime)
     .map(l => new Date(l.startTime))
     .sort(byTimeDesc);
-  let napStartTime = opens[0] ?? null;
+  let napStartTime: Date | null = opens.length > 0 ? opens[0] : null;
 
   if (override) {
     const setAt = new Date(override.setAt).getTime();

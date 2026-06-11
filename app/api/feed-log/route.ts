@@ -6,6 +6,7 @@ import { withAuthContext, AuthResult } from '../utils/auth';
 import { toUTC, formatForResponse } from '../utils/timezone';
 import { checkWritePermission } from '../utils/writeProtection';
 import { notifyActivityCreated, resetTimerNotificationState } from '@/src/lib/notifications/activityHook';
+import { normalizeBottleType } from '../utils/bottleType';
 
 async function handlePost(req: NextRequest, authContext: AuthResult) {
   // Check write permissions for expired accounts
@@ -52,9 +53,9 @@ async function handlePost(req: NextRequest, authContext: AuthResult) {
       ...(body.unitAbbr && { unitAbbr: body.unitAbbr }),
       ...(body.side && { side: body.side }),
       ...(body.food && { food: body.food }),
-      // Handle notes and bottleType - convert empty strings to null
+      // Handle notes and bottleType - convert empty strings to null, canonicalize casing
       notes: body.notes && body.notes.trim() ? body.notes : null,
-      bottleType: body.bottleType && body.bottleType.trim() ? body.bottleType : null,
+      bottleType: normalizeBottleType(body.bottleType),
       familyId,
     };
     
@@ -147,9 +148,9 @@ async function handlePut(req: NextRequest, authContext: AuthResult) {
       ...(body.startTime ? { startTime: toUTC(body.startTime) } : {}),
       ...(body.endTime ? { endTime: toUTC(body.endTime) } : {}),
       ...(body.feedDuration !== undefined ? { feedDuration: body.feedDuration } : {}),
-      // Handle notes and bottleType - convert empty strings to null
+      // Handle notes and bottleType - convert empty strings to null, canonicalize casing
       notes: body.notes && body.notes.trim() ? body.notes : null,
-      ...(body.bottleType && body.bottleType.trim() ? { bottleType: body.bottleType } : { bottleType: null }),
+      bottleType: normalizeBottleType(body.bottleType),
       ...(body.breastMilkAmount !== undefined ? { breastMilkAmount: body.breastMilkAmount } : {}),
       ...Object.entries(body)
         .filter(([key]) => !['time', 'startTime', 'endTime', 'feedDuration', 'notes', 'bottleType', 'breastMilkAmount', 'familyId'].includes(key))

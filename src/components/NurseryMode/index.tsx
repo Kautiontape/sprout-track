@@ -45,6 +45,7 @@ interface HueButton {
 const REFRESH_MS = 5 * 60 * 1000;
 const CLOCK_MS = 30_000;
 const QUICK_CANCEL_MS = 5_000;
+// Canonical values shared with the main app's feed form and read sites
 const BOTTLE_TYPES = ['Formula', 'Breast Milk', 'Milk', 'Other'];
 
 const pad = (n: number) => (n < 10 ? '0' + n : '' + n);

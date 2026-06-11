@@ -4,6 +4,7 @@ import { withApiKeyAuth, ApiKeyContext, validateBabyAccess } from '../../../auth
 import { checkRateLimit } from '../../../rate-limiter';
 import { hookSuccess, hookError } from '../../../response';
 import { notifyActivityCreated, resetTimerNotificationState } from '@/src/lib/notifications/activityHook';
+import { normalizeBottleType } from '../../../../../utils/bottleType';
 
 const VALID_TYPES = ['sleep', 'feed', 'diaper', 'note', 'pump', 'play', 'bath', 'measurement', 'medicine', 'supplement'] as const;
 type ActivityType = typeof VALID_TYPES[number];
@@ -306,7 +307,7 @@ async function handlePost(req: NextRequest, ctx: ApiKeyContext, routeContext: an
         if (alias.bottleType && !bottleType) bottleType = alias.bottleType;
 
         result = await prisma.feedLog.create({
-          data: { time, type: feedType, amount: amount ? parseFloat(amount) : null, unitAbbr: unitAbbr || null, side: side || null, food: food || null, notes: notes || null, bottleType: bottleType || null, babyId, caretakerId, familyId },
+          data: { time, type: feedType, amount: amount ? parseFloat(amount) : null, unitAbbr: unitAbbr || null, side: side || null, food: food || null, notes: notes || null, bottleType: normalizeBottleType(bottleType), babyId, caretakerId, familyId },
         });
         notifyActivityCreated(babyId, 'feed', { caretakerId }, { type: feedType, amount, unitAbbr, food, side }).catch(console.error);
         resetTimerNotificationState(babyId, 'feed').catch(console.error);

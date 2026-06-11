@@ -1,0 +1,36 @@
+/* Dark mode overrides for the Day/Night Flip page */
+
+html.dark .flip-timer-card {
+  background-color: #1f2937 !important; /* gray-800 */
+  border-color: #374151 !important;
+}
+html.dark .flip-timer-card .text-xs {
+  color: #9ca3af !important;
+}
+
+html.dark .flip-rule-chip {
+  background-color: #1f2937 !important;
+  border-color: #4b5563 !important;
+  color: #e5e7eb !important;
+}
+html.dark .flip-rule-why {
+  background-color: #111827 !important;
+  border-color: #374151 !important;
+  color: #d1d5db !important;
+}
+
+html.dark .flip-nudge {
+  background-color: rgba(180, 83, 9, 0.15) !important; /* amber-700 tint */
+  border-color: #92400e !important;
+  color: #fcd34d !important;
+}
+
+html.dark .flip-section-title {
+  color: #d1d5db !important;
+}
+html.dark .flip-escalation-reference {
+  color: #9ca3af !important;
+}
+html.dark .flip-disclaimer {
+  color: #6b7280 !important;
+}

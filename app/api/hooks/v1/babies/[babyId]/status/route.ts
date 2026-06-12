@@ -3,6 +3,9 @@ import prisma from '../../../../../db';
 import { withApiKeyAuth, ApiKeyContext, validateBabyAccess } from '../../../auth';
 import { checkRateLimit } from '../../../rate-limiter';
 import { hookSuccess, hookError } from '../../../response';
+import { mergeFlipConfig } from '@/src/components/DayNightFlip/protocol';
+import { resolveNow } from '@/src/components/DayNightFlip/engine';
+import { deriveFacts } from '@/src/components/DayNightFlip/facts';
 
 function minutesAgo(date: Date): number {
   return Math.floor((Date.now() - date.getTime()) / 60000);
@@ -64,7 +67,7 @@ async function handleGet(req: NextRequest, ctx: ApiKeyContext, routeContext: any
 
   const baby = await prisma.baby.findUnique({
     where: { id: babyId },
-    select: { id: true, firstName: true, birthDate: true, feedWarningTime: true, diaperWarningTime: true },
+    select: { id: true, firstName: true, birthDate: true, feedWarningTime: true, diaperWarningTime: true, dayNightFlipConfig: true },
   });
 
   const today = startOfTodayInTimezone(timezone);
@@ -135,6 +138,60 @@ async function handleGet(req: NextRequest, ctx: ApiKeyContext, routeContext: any
   const diaperOverdue = diaperWarnMins !== null && diaperMinsAgo !== null && diaperMinsAgo > diaperWarnMins;
 
   const ageInDays = baby ? Math.floor((Date.now() - baby.birthDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+
+  // Day/Night Flip state (phase 2): same pure engine the app runs client-side.
+  // Reflects logged data only — the phone-local manual override is not visible
+  // here — and interprets times in the server process timezone (TZ env).
+  const flipConfig = mergeFlipConfig(baby?.dayNightFlipConfig);
+  let dayNightFlip: Record<string, unknown> = { enabled: false };
+  if (baby && flipConfig.enabled) {
+    const nowDate = new Date();
+    const [flipSleeps, flipDiapers, flipWeights] = await Promise.all([
+      prisma.sleepLog.findMany({
+        where: { babyId, deletedAt: null, startTime: { gte: new Date(nowDate.getTime() - 7 * 86400000) } },
+        select: { startTime: true, endTime: true },
+      }),
+      prisma.diaperLog.findMany({
+        where: { babyId, deletedAt: null, time: { gte: new Date(nowDate.getTime() - 24 * 3600000) } },
+        select: { time: true, type: true },
+      }),
+      prisma.measurement.findMany({
+        where: { babyId, deletedAt: null, type: 'WEIGHT' },
+        orderBy: { date: 'desc' }, take: 2,
+        select: { date: true, value: true, unit: true },
+      }),
+    ]);
+    const flipFacts = deriveFacts({
+      sleepLogs: flipSleeps.map(s => ({ startTime: s.startTime.toISOString(), endTime: s.endTime?.toISOString() ?? null })),
+      lastFeed: lastFeed ? { time: lastFeed.time.toISOString(), endTime: lastFeed.endTime?.toISOString() ?? null } : null,
+      diaperLogs: flipDiapers.map(d => ({ time: d.time.toISOString(), type: d.type as 'WET' | 'DIRTY' | 'BOTH' })),
+      weights: flipWeights.map(w => ({ date: w.date.toISOString(), value: w.value, unit: w.unit })),
+      birthDate: baby.birthDate.toISOString(),
+    }, null, nowDate);
+    const flipState = resolveNow(flipConfig, flipFacts, nowDate);
+    const napCapAt = flipState.currentBlock === 'nap' && flipFacts.napStartTime
+      ? new Date(flipFacts.napStartTime.getTime() + flipConfig.dayMode.napCapHr * 3600000).toISOString()
+      : null;
+    dayNightFlip = {
+      enabled: true,
+      phase: flipState.phase,
+      mode: flipState.mode,
+      block: flipState.currentBlock,
+      blockLabel: flipState.blockLabel,
+      nextAction: flipState.nextAction,
+      wakeWindowMin: flipState.timers.wakeWindowElapsedMin,
+      napElapsedMin: flipState.timers.napElapsedMin,
+      sinceLastFeedMin: flipState.timers.sinceLastFeedMin,
+      napCapAt,
+      nextFeedEstimate: flipState.timers.nextFeedEstimate
+        ? {
+            from: flipState.timers.nextFeedEstimate.from.toISOString(),
+            to: flipState.timers.nextFeedEstimate.to?.toISOString() ?? null,
+          }
+        : null,
+      escalations: flipState.escalations.map(e => e.id),
+    };
+  }
 
   const lastActivities: any = {
     feed: lastFeed ? {
@@ -210,6 +267,7 @@ async function handleGet(req: NextRequest, ctx: ApiKeyContext, routeContext: any
       diaperOverdue,
       diaperMinutesSinceWarning: diaperOverdue && diaperWarnMins !== null && diaperMinsAgo !== null ? diaperMinsAgo - diaperWarnMins : null,
     },
+    dayNightFlip,
   };
 
   return hookSuccess(data, { familyId: ctx.familyId, babyId }, rl.headers);

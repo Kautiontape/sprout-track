@@ -80,6 +80,18 @@ test('early-morning now (02:00): window starts at yesterday’s day_start, isNow
   assert.ok(['night-hold', 'night-feed', 'night-sleep'].includes(nowBlock.kind));
 });
 
+test('open sleep from before night start: NOW lands on Down for the night', () => {
+  // went down 18:20, fed 21:24 (still logged as asleep), now 22:27
+  const f = facts({ napStartTime: at(18, 20), lastWakeTime: at(17, 30), lastFeedTime: at(21, 24) });
+  const logs = { sleeps: [{ start: at(18, 20), end: null }], feeds: [at(21, 24)] };
+  const { blocks } = projectDay(CFG, f, logs, at(22, 27));
+  const live = blocks.find(b => b.kind === 'night-sleep' && b.source === 'projected')!;
+  assert.equal(live.end!.getHours(), 20); // early sleep clips at night start
+  assert.equal(live.isNow, false);
+  const nowBlock = blocks.find(b => b.isNow)!;
+  assert.equal(nowBlock.label, 'Down for the night');
+});
+
 test('needs-input facts fall back to the template', () => {
   const { blocks, isTemplate } = projectDay(CFG, facts(), noLogs, at(10, 0));
   assert.equal(isTemplate, true);

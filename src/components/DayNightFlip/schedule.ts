@@ -99,14 +99,23 @@ export function projectDay(
     const capEnd = addMinutes(facts.napStartTime, capMin);
     const feedEnd = lastFeed ? addMinutes(lastFeed, feedMaxMin) : capEnd;
     const isNight = minutesOfDay(now) >= nightStartMin || minutesOfDay(now) < dayStartMin;
-    const end = isNight ? null : (capEnd < feedEnd ? capEnd : feedEnd);
+    // A sleep that began before night_start rolls into the night: clip it at
+    // the anchor so "Down for the night" carries the rest of the stretch, and
+    // leave NOW placement to the marking pass (it belongs on the segment
+    // containing `now`, not on the block's 18:xx start time).
+    const startedBeforeNight = isNight && facts.napStartTime < nightStart;
+    const end = isNight
+      ? (startedBeforeNight ? nightStart : null)
+      : (capEnd < feedEnd ? capEnd : feedEnd);
     blocks.push({
       start: facts.napStartTime < windowStart ? windowStart : facts.napStartTime,
       end,
       kind: isNight ? 'night-sleep' : 'nap',
-      label: isNight ? 'Night sleep' : 'Napping now',
+      label: isNight
+        ? (startedBeforeNight ? 'Asleep — rolling into the night' : 'Night sleep')
+        : 'Napping now',
       note: isNight ? undefined : 'Wake her at the marked time — cap or feed, whichever comes first.',
-      source: 'projected', isNow: true,
+      source: 'projected', isNow: !isNight,
     });
     simWake = end && end > now ? end : now;
   } else {

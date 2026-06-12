@@ -30,8 +30,12 @@ export default function FlipTimers({ state, config }: { state: FlipState; config
 
   const nap = timers.napElapsedMin;
   const napCap = config.dayMode.napCapHr * 60;
+  // The nap cap is a DAY rule (D-3). At night a long stretch is the goal —
+  // never color it as over-cap.
+  const nightSleeping = state.currentBlock === 'night-sleep';
   const napClass =
     nap === null ? '' :
+    nightSleeping ? s.timers.ok :
     nap >= napCap ? s.timers.over :
     nap >= napCap - 15 ? s.timers.warn : s.timers.ok;
 
@@ -48,9 +52,13 @@ export default function FlipTimers({ state, config }: { state: FlipState; config
           </div>
         </div>
         <div className={s.timers.card}>
-          <div className={s.timers.label}>{t('Nap so far')}</div>
+          <div className={s.timers.label}>{nightSleeping ? t('Night sleep') : t('Nap so far')}</div>
           <div className={cn(s.timers.value, napClass)}>{fmtMin(nap)}</div>
-          <div className={s.timers.sub}>{t('cap')} {config.dayMode.napCapHr}h</div>
+          <div className={s.timers.sub}>
+            {nightSleeping
+              ? t('no cap at night — long stretches are the goal')
+              : `${t('cap')} ${config.dayMode.napCapHr}h`}
+          </div>
         </div>
         <div className={s.timers.card}>
           <div className={s.timers.label}>{t('Since last feed')}</div>

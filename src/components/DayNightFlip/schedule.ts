@@ -90,7 +90,7 @@ export function projectDay(
     lastFeed = windowStart;
     blocks.push({
       start: windowStart, end: null, kind: 'wake-feed',
-      label: 'Wake + feed', note: 'Lights on, curtains open — the day starts now no matter how the night went.',
+      label: 'Wake + feed', note: 'Lights on, curtains open. The day starts now, however the night went.',
       source: 'anchor', isNow: false,
     });
   } else if (st.sleeping && facts.napStartTime) {
@@ -112,9 +112,9 @@ export function projectDay(
       end,
       kind: isNight ? 'night-sleep' : 'nap',
       label: isNight
-        ? (startedBeforeNight ? 'Asleep — rolling into the night' : 'Night sleep')
+        ? (startedBeforeNight ? 'Asleep early, rolling into the night' : 'Night sleep')
         : 'Napping now',
-      note: isNight ? undefined : 'Wake her at the marked time — cap or feed, whichever comes first.',
+      note: isNight ? undefined : 'Wake her by the end time shown, for the nap cap or the next feed.',
       source: 'projected', isNow: !isNight,
     });
     simWake = end && end > now ? end : now;
@@ -144,7 +144,7 @@ export function projectDay(
     const feedAt = lastFeed ? addMinutes(lastFeed, feedMaxMin) : simWake;
     if (feedAt <= napStart && feedAt > now) {
       const when = feedAt < simWake ? simWake : feedAt;
-      blocks.push({ start: when, end: null, kind: 'feed', label: 'Feed', note: 'Full, unhurried, paced — daytime calories are the lever.', source: 'projected', isNow: false });
+      blocks.push({ start: when, end: null, kind: 'feed', label: 'Feed', note: 'A full, unhurried feed.', source: 'projected', isNow: false });
       lastFeed = when;
     }
 
@@ -160,8 +160,8 @@ export function projectDay(
       blocks.push({
         start: napStart, end: napEnd,
         kind: inCatnap ? 'catnap' : 'nap',
-        label: inCatnap ? 'Catnap — short!' : 'Nap',
-        note: inCatnap ? `Wake by ${config.dayMode.lastWakeBy} to protect bedtime.` : `Cap ${config.dayMode.napCapHr}h — wake her.`,
+        label: inCatnap ? 'Catnap (keep it short)' : 'Nap',
+        note: inCatnap ? `Wake her by ${config.dayMode.lastWakeBy} so bedtime still lands.` : `Wake her after ${config.dayMode.napCapHr} hours at most.`,
         source: 'projected', isNow: false,
       });
     }
@@ -179,7 +179,7 @@ export function projectDay(
       start: routineStart, end: nightStart, kind: 'bedtime-routine',
       label: 'Bedtime routine',
       note: routineStart < bedtimeAnchor
-        ? 'Early tonight (R-21) — never stretch an overtired baby to a clock time. Normal anchor resumes tomorrow.'
+        ? 'Earlier than usual tonight. The regular time returns tomorrow.'
         : 'Feed, fresh swaddle, dim lights, white noise on.',
       source: 'anchor', isNow: false,
     });
@@ -187,7 +187,7 @@ export function projectDay(
   blocks.push({
     start: nightStart, end: null, kind: 'night-sleep',
     label: 'Down for the night',
-    note: 'Robot mode — dark, silent, boring. Shifts start.',
+    note: 'Robot mode: dark, silent, boring. Shifts start now.',
     source: 'anchor', isNow: false,
   });
   for (const sf of config.nightMode.scheduledFeeds) {
@@ -196,7 +196,7 @@ export function projectDay(
     if (when < now && !isTemplate) continue; // already past
     blocks.push({
       start: when, end: null, kind: 'night-feed',
-      label: 'Night feed', note: 'Estimate, never an alarm — feed when she asks.',
+      label: 'Night feed', note: 'An estimate, not an alarm. Feed when she asks.',
       source: 'projected', isNow: false,
     });
   }

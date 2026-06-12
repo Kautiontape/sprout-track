@@ -150,22 +150,22 @@ export function resolveNow(config: FlipConfig, facts: ActivityFacts, now: Date):
   // --- nudges ---
   const nudges: FlipNudge[] = [];
   if (mode === 'day' && sleeping && feedDue) {
-    nudges.push({ id: 'D-2', text: `Wake to feed — over ${config.dayMode.feedIntervalMaxHr}h since last feed` });
+    nudges.push({ id: 'D-2', text: `It has been over ${config.dayMode.feedIntervalMaxHr} hours since she ate. Wake her for a feed.` });
   }
   if (napCapHit && mode === 'day') {
-    nudges.push({ id: 'D-3', text: `Nap cap reached (${config.dayMode.napCapHr}h) — wake her now` });
+    nudges.push({ id: 'D-3', text: `This nap hit its ${config.dayMode.napCapHr}-hour cap. Wake her up.` });
   }
   if (overtired) {
-    nudges.push({ id: 'R-16', text: `Overtired (${fmtMin(wakeWindowElapsedMin!)} awake, ceiling ${ceiling}m) — more help, not more patience. Skip the wait; go straight to active soothing.` });
+    nudges.push({ id: 'R-16', text: `She has been awake ${fmtMin(wakeWindowElapsedMin!)}, past the ${ceiling}-minute ceiling. Overtired needs more help, not more patience: skip the waiting and go straight to active soothing.` });
   }
   if (
     mode === 'day' && !sleeping && wakeKnown && facts.lastWakeTime &&
     minutesOfDay(facts.lastWakeTime) < dayStartMin && rawWakeElapsed! < nowMin // woke today, before anchor
   ) {
-    nudges.push({ id: 'R-12', text: `Window started at the actual wake (${fmtClock(facts.lastWakeTime)}), not ${config.anchors.dayStart} — nap 1 comes earlier.` });
+    nudges.push({ id: 'R-12', text: `She woke at ${fmtClock(facts.lastWakeTime)}, so her clock started then, not at ${config.anchors.dayStart}. The first nap comes earlier today.` });
   }
   if (r21RoutineStartMin !== null && currentBlock === 'bedtime-routine' && nowMin < bedtimeMin) {
-    nudges.push({ id: 'R-21', text: 'Early bedtime tonight — never stretch an overtired baby to hit a clock time. Normal anchor resumes tomorrow.' });
+    nudges.push({ id: 'R-21', text: 'Bedtime comes early tonight. Don\'t stretch her to hit the usual clock time; the normal schedule picks back up tomorrow.' });
   }
 
   const escalations = buildEscalations(config, facts);
@@ -219,33 +219,33 @@ function describeBlock(i: DescribeInput): { blockLabel: string; nextAction: stri
     case 'needs-input':
       return {
         blockLabel: 'Needs a starting point',
-        nextAction: 'No recent sleep data — set the actual last wake time below to start.',
+        nextAction: 'There is no recent sleep data. Set her last wake time below to get started.',
       };
     case 'nap': {
-      if (i.napCapHit) return { blockLabel: 'Nap (cap reached)', nextAction: `Wake her now — nap cap ${c.dayMode.napCapHr}h reached.` };
-      if (i.feedDue) return { blockLabel: 'Nap (feed overdue)', nextAction: `Wake to feed — over ${c.dayMode.feedIntervalMaxHr}h since last feed.` };
+      if (i.napCapHit) return { blockLabel: 'Nap (cap reached)', nextAction: `Wake her up. This nap hit its ${c.dayMode.napCapHr}-hour cap.` };
+      if (i.feedDue) return { blockLabel: 'Nap (feed overdue)', nextAction: `Wake her for a feed. It has been over ${c.dayMode.feedIntervalMaxHr} hours.` };
       const wakeBy = i.facts.napStartTime ? fmtClock(addMinutes(i.facts.napStartTime, c.dayMode.napCapHr * 60)) : '';
-      return { blockLabel: 'Napping', nextAction: `Wake by ${wakeBy} (nap cap ${c.dayMode.napCapHr}h). Bright room, no white noise.` };
+      return { blockLabel: 'Napping', nextAction: `Wake her by ${wakeBy}. Keep the room bright with normal household noise.` };
     }
     case 'night-sleep':
       return { blockLabel: 'Night sleep', nextAction: 'Leave her be. Dark, white noise on. Feed on demand when she wakes.' };
     case 'night-hold':
-      return { blockLabel: 'Night hold', nextAction: `Hold dark and boring until ${c.anchors.dayStart}. If hungry, feed in the dark — do not stall with a pacifier, do not start the day early.` };
+      return { blockLabel: 'Night hold', nextAction: `Keep it dark until ${c.anchors.dayStart}. If she's hungry, feed her in the dark. Don't stall with a pacifier, and don't start the day early.` };
     case 'night-feed':
-      return { blockLabel: 'Night — robot mode', nextAction: 'Feed on demand. Dark, silent, minimal handling, change only if poopy.' };
+      return { blockLabel: 'Robot mode', nextAction: 'Feed when she asks. Keep it dark and quiet, handle her as little as possible, and only change a poopy diaper.' };
     case 'feed-due':
-      return { blockLabel: 'Feed due', nextAction: `Feed now — ${i.sinceLastFeedMin !== null ? fmtMin(i.sinceLastFeedMin) : 'long'} since last feed (max ${c.dayMode.feedIntervalMaxHr}h). Big daytime feeds are the lever.` };
+      return { blockLabel: 'Feed due', nextAction: `Time to feed. It has been ${i.sinceLastFeedMin !== null ? fmtMin(i.sinceLastFeedMin) : 'a while'} (the daytime max is ${c.dayMode.feedIntervalMaxHr} hours).` };
     case 'bedtime-routine':
-      return { blockLabel: 'Bedtime routine', nextAction: `Start the wind-down now — feed, fresh swaddle, dark room. Down by ${c.anchors.nightStart}.` };
+      return { blockLabel: 'Bedtime routine', nextAction: `Start the wind-down: feed, fresh swaddle, dim room. Down by ${c.anchors.nightStart}.` };
     case 'awake': {
       if (i.overtired) {
-        return { blockLabel: 'Awake (overtired)', nextAction: `Rescue now — ${fmtMin(i.wakeWindowElapsedMin!)} awake (ceiling ${c.dayMode.wakeWindowCeilingMin}m). Contact nap, motion, feeding down — whatever is fastest.` };
+        return { blockLabel: 'Awake (overtired)', nextAction: `She has been up ${fmtMin(i.wakeWindowElapsedMin!)}, past the ${c.dayMode.wakeWindowCeilingMin}-minute ceiling. Rescue the nap now: hold her, use motion, or feed her down, whatever works fastest.` };
       }
       const downBy = i.facts.lastWakeTime ? fmtClock(addMinutes(i.facts.lastWakeTime, c.dayMode.wakeWindowTargetMin[1])) : '';
       if (i.inCatnapSlot) {
-        return { blockLabel: 'Catnap window', nextAction: `Short catnap only (30-45m) — last wake by ${c.dayMode.lastWakeBy} to protect bedtime.` };
+        return { blockLabel: 'Catnap window', nextAction: `Keep this catnap short, 30–45 minutes. Have her up by ${c.dayMode.lastWakeBy} so bedtime still lands.` };
       }
-      return { blockLabel: 'Awake window', nextAction: `Put down by ${downBy} — window ${i.wakeWindowElapsedMin !== null ? fmtMin(i.wakeWindowElapsedMin) : '?'} of target ${c.dayMode.wakeWindowTargetMin[0]}-${c.dayMode.wakeWindowTargetMin[1]}m.` };
+      return { blockLabel: 'Awake window', nextAction: `Put her down by ${downBy}. She has been up ${i.wakeWindowElapsedMin !== null ? fmtMin(i.wakeWindowElapsedMin) : 'a while'} of a ${c.dayMode.wakeWindowTargetMin[0]}–${c.dayMode.wakeWindowTargetMin[1]} minute window.` };
     }
   }
 }
@@ -255,7 +255,7 @@ function buildEscalations(config: FlipConfig, facts: ActivityFacts): FlipNudge[]
   if (facts.wetDiapersLast24h !== null && facts.wetDiapersLast24h < 6) {
     out.push({
       id: 'R-42-wet',
-      text: `Only ${facts.wetDiapersLast24h} wet diapers in the last 24h (minimum 6) — contact your pediatrician.`,
+      text: `Only ${facts.wetDiapersLast24h} wet diapers in the last 24 hours, under the minimum of 6. Call your pediatrician.`,
     });
   }
   if (facts.latestWeight && facts.previousWeight) {
@@ -268,12 +268,12 @@ function buildEscalations(config: FlipConfig, facts: ActivityFacts): FlipNudge[]
     if (deltaOz <= 0) {
       out.push({
         id: 'R-42-weight',
-        text: 'No weight gain (or a loss) since the last measurement — contact your pediatrician.',
+        text: 'Her weight is flat or down since the last measurement. Call your pediatrician.',
       });
     } else if (ozPerDay > 1.5) {
       out.push({
         id: 'R-33',
-        text: `Latest weight implies ${round1(ozPerDay)} oz/day gain (plausible is ${config.feeding.growthOzPerDay[0]}-${config.feeding.growthOzPerDay[1]}). Double-check the measurement — a bad weight corrupts every feeding target.`,
+        text: `The latest weight works out to ${round1(ozPerDay)} oz/day of gain, well above the usual ${config.feeding.growthOzPerDay[0]}–${config.feeding.growthOzPerDay[1]}. Double-check the measurement, since feeding targets are based on it.`,
       });
     }
   }

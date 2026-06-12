@@ -74,11 +74,11 @@ export default function DayNightFlip() {
   return (
     <div className={s.page}>
       {state.phase === 'pre' && (
-        <div className={s.nudge}>{t('The protocol becomes relevant around 2 weeks of age.')}</div>
+        <div className={s.nudge}>{t('This protocol is meant for babies about 2 weeks and older.')}</div>
       )}
       {state.phase === 'sunset' && (
         <div className={s.nudge}>
-          {t('Past ~10 weeks the protocol sunsets: relax the contrast rules, white noise may return for naps, and the schedule can mature. (R-43)')}
+          {t('Past about 10 weeks the protocol winds down. The day/night contrast rules can relax, white noise can come back for naps, and the schedule can grow up with her.')}
         </div>
       )}
 
@@ -120,7 +120,7 @@ export default function DayNightFlip() {
                       className="underline ml-1 font-medium"
                       onClick={() => setActiveWizard('rescue')}
                     >
-                      {t('Rescue →')}
+                      {t('Open the rescue guide')}
                     </button>
                   )}
                 </div>

@@ -82,8 +82,8 @@ export default function DayNightFlipTab({ config, onChange, birthDate }: DayNigh
     : null;
   const ageBadge =
     ageWeeks === null ? '' :
-    ageWeeks < 2 ? t('protocol starts ~2 weeks') :
-    ageWeeks > 10 ? t('past the ~10 week sunset') : t('in the active window (2–10 weeks)');
+    ageWeeks < 2 ? t('the protocol starts around 2 weeks old') :
+    ageWeeks > 10 ? t('past the 10-week wind-down') : t('in the active window (2–10 weeks)');
 
   return (
     <div className="space-y-3">

@@ -60,7 +60,7 @@ export default function FlipSchedule({ config, facts, todayLogs, now }: FlipSche
     <div className="flip-sched-wrap">
       {isTemplate && (
         <div className="flip-sched-template-note">
-          {t('Showing the template day — set the actual wake time on the Now tab and the schedule adapts to it.')}
+          {t('This is the template day. Set her actual wake time on the Now tab and the schedule will adapt to it.')}
         </div>
       )}
       <button type="button" className="flip-sched-nowbtn" onClick={jump}>

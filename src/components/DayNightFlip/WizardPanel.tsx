@@ -73,10 +73,10 @@ export default function WizardPanel({ wizardId, config, now, onClose }: WizardPa
           </ul>
           {timing?.isFinalNap && timing.wakeBy && timing.routineStart && (
             <p className={s.wizard.timing}>
-              {t('This late, the rescue nap becomes the day’s final nap.')}{' '}
+              {t('This late in the day, the rescue nap becomes her last nap.')}{' '}
               {t('Wake her by')} <strong>{fmtClock(timing.wakeBy)}</strong>{' '}
               ({config.durations.rescueNapMaxMin}m {t('max')}), {t('then start the bedtime routine around')}{' '}
-              <strong>{fmtClock(timing.routineStart)}</strong>. {t('One-night adjustment — the normal anchor resumes tomorrow.')}
+              <strong>{fmtClock(timing.routineStart)}</strong>. {t('That is just for tonight; the normal schedule returns tomorrow.')}
             </p>
           )}
           <p className={s.wizard.why}><strong>{t('Why')}:</strong> {t(node.why)}</p>

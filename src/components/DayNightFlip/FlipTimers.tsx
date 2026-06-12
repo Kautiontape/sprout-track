@@ -54,33 +54,31 @@ export default function FlipTimers({ state, config }: { state: FlipState; config
         <div className={s.timers.card}>
           <div className={s.timers.label}>{nightSleeping ? t('Night sleep') : t('Nap so far')}</div>
           <div className={cn(s.timers.value, napClass)}>{fmtMin(nap)}</div>
-          <div className={s.timers.sub}>
-            {nightSleeping
-              ? t('no cap at night — long stretches are the goal')
-              : `${t('cap')} ${config.dayMode.napCapHr}h`}
-          </div>
+          {!nightSleeping && (
+            <div className={s.timers.sub}>{t('cap')} {config.dayMode.napCapHr}h</div>
+          )}
         </div>
         <div className={s.timers.card}>
           <div className={s.timers.label}>{t('Since last feed')}</div>
           <div className={s.timers.value}>{fmtMin(timers.sinceLastFeedMin)}</div>
           <div className={s.timers.sub}>
             {feedEst
-              ? `${t('next')} ${feedEst.to ? '~' : ''}${fmtClock(feedEst.from)}${feedEst.to ? `–${fmtClock(feedEst.to)}` : ''}`
+              ? feedEst.to
+                ? `${t('next around')} ${fmtClock(feedEst.from)}–${fmtClock(feedEst.to)}`
+                : `${t('feed by')} ${fmtClock(feedEst.from)}`
               : t('no feeds logged')}
           </div>
         </div>
       </div>
       {intake && config.feedingMethod !== 'nursing' && (
         <div className={s.timers.sub}>
-          {t('Daily intake estimate')}: {intake.dailyTargetOz[0]}–{intake.dailyTargetOz[1]} oz
-          {' · '}
-          {t('projected weight')} {ozToLb(intake.projectedWeightOz[0])}–{ozToLb(intake.projectedWeightOz[1])} lb
-          {' — '}{t('starting estimates, not ceilings')}
+          {t('Rough daily intake')}: {intake.dailyTargetOz[0]}–{intake.dailyTargetOz[1]} oz, {t('based on a projected weight of')}{' '}
+          {ozToLb(intake.projectedWeightOz[0])}–{ozToLb(intake.projectedWeightOz[1])} lb. {t('A starting point, not a limit.')}
         </div>
       )}
       {config.feedingMethod !== 'bottle' && (
         <div className={s.timers.sub}>
-          {t('Output check (nursing)')}: {t('aim for 6+ wet and 3+ dirty diapers per day')}
+          {t('Nursing check: aim for at least 6 wet and 3 dirty diapers a day.')}
         </div>
       )}
     </div>

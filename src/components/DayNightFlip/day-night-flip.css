@@ -60,3 +60,60 @@ html.dark .flip-toggle-btn.active-dark {
   color: #5eead4 !important;
   border-color: #0f766e !important;
 }
+
+/* --- schedule view: "the page is the day" (palette from sylvie-schedule.html) ---
+   The day/night section colors are intentional and identical in light & dark
+   app themes — the page itself is the day. */
+.flip-sched { border-radius: 16px; overflow: hidden; }
+.flip-sched-day { background: #FBF6EC; color: #3D3320; padding: 16px; }
+.flip-sched-night { background: #15132B; color: #E6E3F7; padding: 16px; }
+.flip-sched-dusk { height: 48px; background: linear-gradient(to bottom, #FBF6EC, #15132B); }
+.flip-sched-eyebrow {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.flip-sched-day .flip-sched-eyebrow { color: #C07A1E; }
+.flip-sched-night .flip-sched-eyebrow { color: #A89BF0; }
+.flip-sched-day h3, .flip-sched-night h3 { font-size: 17px; font-weight: 650; margin: 2px 0 10px; }
+.flip-sched-block {
+  display: grid; grid-template-columns: 64px 1fr; gap: 12px;
+  padding: 10px; border-radius: 12px; border: 1.5px solid transparent;
+}
+.flip-sched-time {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12.5px; font-weight: 600; text-align: right; padding-top: 2px;
+}
+.flip-sched-day .flip-sched-time { color: #C07A1E; }
+.flip-sched-night .flip-sched-time { color: #A89BF0; }
+.flip-sched-act { font-size: 14.5px; font-weight: 600; line-height: 1.35; }
+.flip-sched-until { font-weight: 500; opacity: 0.65; font-size: 13px; }
+.flip-sched-note { font-size: 12.5px; line-height: 1.5; margin-top: 2px; }
+.flip-sched-day .flip-sched-note { color: #8A7A5C; }
+.flip-sched-night .flip-sched-note { color: #9D97C9; }
+.flip-sched-block.now { border-color: currentColor; }
+.flip-sched-day .flip-sched-block.now { background: #FFFFFF; border-color: #C07A1E; box-shadow: 0 2px 12px rgba(192,122,30,0.15); }
+.flip-sched-night .flip-sched-block.now { background: #201D3F; border-color: #A89BF0; }
+.flip-sched-nowtag {
+  font-family: ui-monospace, Menlo, monospace; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.1em; border-radius: 5px; padding: 2px 6px; margin-left: 8px;
+  background: #C07A1E; color: #FFF8EC; vertical-align: 2px;
+}
+.flip-sched-night .flip-sched-nowtag { background: #A89BF0; color: #1A1735; }
+.flip-sched-nowbtn {
+  display: inline-flex; align-items: center; gap: 7px; margin: 0 0 10px;
+  font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; font-weight: 600;
+  border: 1.5px solid #C07A1E; border-radius: 99px; padding: 7px 14px;
+  background: #FFFFFF; color: #3D3320; cursor: pointer;
+}
+.flip-sched-nowbtn .dot { width: 8px; height: 8px; border-radius: 50%; background: #C07A1E; }
+@media (prefers-reduced-motion: no-preference) {
+  .flip-sched-nowbtn .dot { animation: flip-pulse 2s ease-in-out infinite; }
+  @keyframes flip-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+}
+.flip-sched-template-note {
+  border: 1px solid #EADFC8; background: #FFF; border-radius: 10px;
+  padding: 8px 12px; font-size: 13px; color: #8A7A5C; margin-bottom: 10px;
+}
+html.dark .flip-sched-nowbtn { background: #201D3F; color: #E6E3F7; border-color: #A89BF0; }
+html.dark .flip-sched-nowbtn .dot { background: #A89BF0; }
+html.dark .flip-sched-template-note { background: #1f2937; border-color: #374151; color: #9ca3af; }

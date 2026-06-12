@@ -45,19 +45,59 @@ export type FlipState = {
 
 const STALE_FACT_MIN = 12 * 60;
 
-const minutesOfDay = (d: Date) => d.getHours() * 60 + d.getMinutes();
-const parseHHMM = (s: string) => {
+export const minutesOfDay = (d: Date) => d.getHours() * 60 + d.getMinutes();
+export const parseHHMM = (s: string) => {
   const [h, m] = s.split(':').map(Number);
   return h * 60 + (m || 0);
 };
-const minutesBetween = (a: Date, b: Date) =>
+export const minutesBetween = (a: Date, b: Date) =>
   Math.floor((a.getTime() - b.getTime()) / 60000);
-const addMinutes = (d: Date, min: number) => new Date(d.getTime() + min * 60000);
-const fmt = (d: Date) =>
+export const addMinutes = (d: Date, min: number) => new Date(d.getTime() + min * 60000);
+export const fmtClock = (d: Date) =>
   `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-const fmtMin = (min: number) =>
+export const fmtMin = (min: number) =>
   min >= 60 ? `${Math.floor(min / 60)}h ${min % 60}m` : `${min}m`;
 const round1 = (n: number) => Math.round(n * 10) / 10;
+
+export type SleepState = {
+  sleeping: boolean;
+  wakeKnown: boolean;
+  napElapsedMin: number | null;
+  rawWakeElapsed: number | null;
+};
+
+// Shared staleness/skew logic — resolveNow and projectDay must never disagree.
+// A fact a couple of minutes ahead of `now` is clock skew (e.g. an override
+// set between UI ticks), not bad data — clamp it to 0 rather than reject it.
+export function sleepState(facts: ActivityFacts, now: Date): SleepState {
+  const clampSkew = (min: number | null) =>
+    min !== null && min >= -2 ? Math.max(0, min) : min;
+  const rawNapElapsed = clampSkew(facts.napStartTime ? minutesBetween(now, facts.napStartTime) : null);
+  const sleeping = rawNapElapsed !== null && rawNapElapsed >= 0 && rawNapElapsed < STALE_FACT_MIN;
+  const rawWakeElapsed = clampSkew(facts.lastWakeTime ? minutesBetween(now, facts.lastWakeTime) : null);
+  const wakeKnown = rawWakeElapsed !== null && rawWakeElapsed >= 0 && rawWakeElapsed < STALE_FACT_MIN;
+  return { sleeping, wakeKnown, napElapsedMin: sleeping ? rawNapElapsed : null, rawWakeElapsed };
+}
+
+const RESCUE_FINAL_NAP_AFTER_MIN = 16 * 60; // R-20: rescue at/after ~16:00
+
+export type RescueTiming = {
+  isFinalNap: boolean;
+  wakeBy: Date | null;        // rescue nap cap (R-20)
+  routineStart: Date | null;  // early bedtime (R-21)
+};
+
+export function rescueTiming(config: FlipConfig, now: Date): RescueTiming {
+  if (minutesOfDay(now) < RESCUE_FINAL_NAP_AFTER_MIN) {
+    return { isFinalNap: false, wakeBy: null, routineStart: null };
+  }
+  const wakeBy = addMinutes(now, config.durations.rescueNapMaxMin);
+  const projected = addMinutes(wakeBy, config.dayMode.wakeWindowTargetMin[1]);
+  const anchorMin = parseHHMM(config.anchors.bedtimeRoutine);
+  const anchor = new Date(now);
+  anchor.setHours(Math.floor(anchorMin / 60), anchorMin % 60, 0, 0);
+  return { isFinalNap: true, wakeBy, routineStart: projected < anchor ? projected : anchor };
+}
 
 export function resolveNow(config: FlipConfig, facts: ActivityFacts, now: Date): FlipState {
   const nowMin = minutesOfDay(now);
@@ -70,17 +110,8 @@ export function resolveNow(config: FlipConfig, facts: ActivityFacts, now: Date):
   const ageWeeks = Math.floor(minutesBetween(now, facts.birthDate) / (60 * 24 * 7));
   const phase: FlipPhase = ageWeeks < 2 ? 'pre' : ageWeeks > 10 ? 'sunset' : 'active';
 
-  // --- timers (stale facts are treated as unknown) ---
-  // A fact a couple of minutes ahead of `now` is clock skew (e.g. an override
-  // set between UI ticks), not bad data — clamp it to 0 rather than reject it.
-  const clampSkew = (min: number | null) =>
-    min !== null && min >= -2 ? Math.max(0, min) : min;
-  const rawNapElapsed = clampSkew(facts.napStartTime ? minutesBetween(now, facts.napStartTime) : null);
-  const sleeping = rawNapElapsed !== null && rawNapElapsed >= 0 && rawNapElapsed < STALE_FACT_MIN;
-  const napElapsedMin = sleeping ? rawNapElapsed : null;
-
-  const rawWakeElapsed = clampSkew(facts.lastWakeTime ? minutesBetween(now, facts.lastWakeTime) : null);
-  const wakeKnown = rawWakeElapsed !== null && rawWakeElapsed >= 0 && rawWakeElapsed < STALE_FACT_MIN;
+  // --- timers (stale facts are treated as unknown; see sleepState) ---
+  const { sleeping, wakeKnown, napElapsedMin, rawWakeElapsed } = sleepState(facts, now);
   const wakeWindowElapsedMin = !sleeping && wakeKnown ? rawWakeElapsed : null;
 
   const sinceLastFeedMin = facts.lastFeedTime ? minutesBetween(now, facts.lastFeedTime) : null;
@@ -131,7 +162,7 @@ export function resolveNow(config: FlipConfig, facts: ActivityFacts, now: Date):
     mode === 'day' && !sleeping && wakeKnown && facts.lastWakeTime &&
     minutesOfDay(facts.lastWakeTime) < dayStartMin && rawWakeElapsed! < nowMin // woke today, before anchor
   ) {
-    nudges.push({ id: 'R-12', text: `Window started at the actual wake (${fmt(facts.lastWakeTime)}), not ${config.anchors.dayStart} — nap 1 comes earlier.` });
+    nudges.push({ id: 'R-12', text: `Window started at the actual wake (${fmtClock(facts.lastWakeTime)}), not ${config.anchors.dayStart} — nap 1 comes earlier.` });
   }
   if (r21RoutineStartMin !== null && currentBlock === 'bedtime-routine' && nowMin < bedtimeMin) {
     nudges.push({ id: 'R-21', text: 'Early bedtime tonight — never stretch an overtired baby to hit a clock time. Normal anchor resumes tomorrow.' });
@@ -193,7 +224,7 @@ function describeBlock(i: DescribeInput): { blockLabel: string; nextAction: stri
     case 'nap': {
       if (i.napCapHit) return { blockLabel: 'Nap (cap reached)', nextAction: `Wake her now — nap cap ${c.dayMode.napCapHr}h reached.` };
       if (i.feedDue) return { blockLabel: 'Nap (feed overdue)', nextAction: `Wake to feed — over ${c.dayMode.feedIntervalMaxHr}h since last feed.` };
-      const wakeBy = i.facts.napStartTime ? fmt(addMinutes(i.facts.napStartTime, c.dayMode.napCapHr * 60)) : '';
+      const wakeBy = i.facts.napStartTime ? fmtClock(addMinutes(i.facts.napStartTime, c.dayMode.napCapHr * 60)) : '';
       return { blockLabel: 'Napping', nextAction: `Wake by ${wakeBy} (nap cap ${c.dayMode.napCapHr}h). Bright room, no white noise.` };
     }
     case 'night-sleep':
@@ -210,7 +241,7 @@ function describeBlock(i: DescribeInput): { blockLabel: string; nextAction: stri
       if (i.overtired) {
         return { blockLabel: 'Awake (overtired)', nextAction: `Rescue now — ${fmtMin(i.wakeWindowElapsedMin!)} awake (ceiling ${c.dayMode.wakeWindowCeilingMin}m). Contact nap, motion, feeding down — whatever is fastest.` };
       }
-      const downBy = i.facts.lastWakeTime ? fmt(addMinutes(i.facts.lastWakeTime, c.dayMode.wakeWindowTargetMin[1])) : '';
+      const downBy = i.facts.lastWakeTime ? fmtClock(addMinutes(i.facts.lastWakeTime, c.dayMode.wakeWindowTargetMin[1])) : '';
       if (i.inCatnapSlot) {
         return { blockLabel: 'Catnap window', nextAction: `Short catnap only (30-45m) — last wake by ${c.dayMode.lastWakeBy} to protect bedtime.` };
       }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveNow, ActivityFacts } from './engine';
+import { resolveNow, rescueTiming, sleepState, ActivityFacts } from './engine';
 import { DEFAULT_FLIP_CONFIG, FlipConfig } from './protocol';
 
 const CFG: FlipConfig = { ...DEFAULT_FLIP_CONFIG, enabled: true };
@@ -168,4 +168,28 @@ test('R-43 sunset: age > 10 weeks', () => {
   assert.equal(resolveNow(CFG, oldBaby, at(10, 30)).phase, 'sunset');
   const young = facts({ lastWakeTime: at(10, 0), birthDate: at(0, 0, -10) });
   assert.equal(resolveNow(CFG, young, at(10, 30)).phase, 'pre');
+});
+
+test('rescueTiming: before 16:00 is not the final nap', () => {
+  const r = rescueTiming(CFG, at(11, 0));
+  assert.equal(r.isFinalNap, false);
+  assert.equal(r.wakeBy, null);
+});
+
+test('rescueTiming: after 16:00 caps the nap and computes early bedtime', () => {
+  const r = rescueTiming(CFG, at(16, 30));
+  assert.equal(r.isFinalNap, true);
+  // wakeBy = 16:30 + 90m = 18:00
+  assert.equal(r.wakeBy!.getHours(), 18);
+  assert.equal(r.wakeBy!.getMinutes(), 0);
+  // routineStart = min(18:00 + 60m target, 19:15 anchor) = 19:00
+  assert.equal(r.routineStart!.getHours(), 19);
+  assert.equal(r.routineStart!.getMinutes(), 0);
+});
+
+test('sleepState matches resolveNow semantics', () => {
+  const napping = sleepState(facts({ napStartTime: at(9, 30), lastWakeTime: at(8, 30) }), at(10, 0));
+  assert.equal(napping.sleeping, true);
+  const stale = sleepState(facts({ lastWakeTime: at(21, 0, -1) }), at(10, 0));
+  assert.equal(stale.wakeKnown, false);
 });

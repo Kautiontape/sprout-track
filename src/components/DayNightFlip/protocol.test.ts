@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_FLIP_CONFIG, mergeFlipConfig, FLIP_RULES } from './protocol';
+import { DEFAULT_FLIP_CONFIG, mergeFlipConfig, FLIP_RULES, FLIP_FAQ } from './protocol';
 
 test('defaults match the source ruleset config block', () => {
   assert.equal(DEFAULT_FLIP_CONFIG.enabled, false);
@@ -39,6 +39,14 @@ test('mergeFlipConfig: null/garbage/partial all merge over defaults', () => {
   assert.equal(partial.anchors.bedtimeRoutine, '19:15'); // default survives
   assert.equal(partial.dayMode.napCapHr, 1.5);
   assert.equal(partial.dayMode.wakeWindowCeilingMin, 75); // default survives
+});
+
+test('FAQ bank has the 11 ruleset entries', () => {
+  assert.equal(FLIP_FAQ.length, 11);
+  for (const f of FLIP_FAQ) {
+    assert.ok(f.question.endsWith('?'), `${f.id} is a question`);
+    assert.ok(f.answer.length > 40, `${f.id} has a real answer`);
+  }
 });
 
 test('rule bank covers all day and night mode rules', () => {

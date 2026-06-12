@@ -129,3 +129,31 @@ export const FLIP_RULES: FlipRule[] = [
     text: 'Parents run shifts; off-duty parent sleeps out of earshot',
     why: 'Two people with four-plus consolidated hours each beats two people with fragmented sleep. If holding the baby, stay fully awake — dozing while holding is the actual danger.' },
 ];
+
+export type FlipFaqEntry = { id: string; question: string; answer: string };
+
+// Ruleset section 5 — the rationale bank. Strings double as en.json keys.
+export const FLIP_FAQ: FlipFaqEntry[] = [
+  { id: 'faq-1', question: 'Why does this work at all?',
+    answer: 'No circadian rhythm exists before ~6–10 weeks; the baby’s clock is trained by environmental contrast — light, noise, stimulation, and calorie timing. Day/night confusion is the most fixable newborn sleep problem.' },
+  { id: 'faq-2', question: 'Why wake a sleeping baby?',
+    answer: 'Daytime sleep and daytime calories displace nighttime wakefulness and night hunger. The nap cap and forced day feeds are the two levers doing the flipping; skip them and the night stays broken.' },
+  { id: 'faq-3', question: 'Why are worse daytime naps good?',
+    answer: 'Light, noisy, shallow day sleep sharpens the contrast with deep night sleep. Counterintuitive but central — the contrast is the mechanism.' },
+  { id: 'faq-4', question: 'Why no sleep training yet?',
+    answer: 'Self-settling emerges around 3–4 months. Before that, “letting her figure it out” isn’t on the menu — and you can’t spoil a newborn, so helping is free.' },
+  { id: 'faq-5', question: 'Why swaddle only for sleep?',
+    answer: 'Cues work by exclusivity. Swaddle-only-for-sleep makes wrapping mean “we’re going down now.” The same logic gates white noise to nights.' },
+  { id: 'faq-6', question: 'Why does she scream in the crib but sleep on my chest?',
+    answer: 'Flat position worsens gas discomfort; a chest is upright with warm belly pressure. Add normal newborn contact preference and the Moro reflex on transfer. Counters: deep-sleep transfer via the limp-arm test, feet-first lay-down, a pre-warmed bassinet, and a hand on her chest for 30 seconds.' },
+  { id: 'faq-7', question: 'Won’t early bedtime cause a 5am start?',
+    answer: 'Sleep isn’t a fixed tank. Overtired produces a fragmented night; well-rested produces a better night. Sleep begets sleep at this age.' },
+  { id: 'faq-8', question: 'Why does the pacifier keep failing?',
+    answer: 'It needs active sucking; an overtired baby can’t sustain it, so you get the spit–cry–replace loop. It’s a soothing tool, not a stalling tool — never use it to delay a hungry baby.' },
+  { id: 'faq-9', question: 'Why does eating count as awake time?',
+    answer: 'The window measures time out of sleep, not play. A 40-minute feed plus a change is a complete window for a slow eater.' },
+  { id: 'faq-10', question: 'Why estimates instead of exact feed amounts?',
+    answer: 'Intake targets derive from weight, vary feed to feed, and the growth curve — the pediatrician’s data — always outranks rules of thumb.' },
+  { id: 'faq-11', question: 'Why anchors AND windows?',
+    answer: 'Two independent systems: anchors (fixed clock times) train the circadian rhythm via light; windows (elapsed timers) prevent overtiredness via sleep pressure. They drift apart on early-wake days — the window wins for when, the anchor wins for environment.' },
+];

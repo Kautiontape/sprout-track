@@ -1,7 +1,13 @@
-# DayNightFlip
+# DayNightFlip (user-facing name: **Rhythm**)
 
 In-app tool guiding parents through the newborn day/night-confusion protocol
 (spec: docs/superpowers/specs/2026-06-11-day-night-flip-design.md).
+
+Naming: the feature is presented to users as **Rhythm** (sidebar, route
+`/rhythm`, settings tab). Internal identifiers keep the protocol's original
+name — this folder, the `Baby.dayNightFlipConfig` column, and the
+`dayNightFlip` section on the status hook — because renaming them buys nothing
+user-visible and would force a migration plus HA sensor changes.
 
 - `engine.ts` — pure `resolveNow(config, facts, now)`; no React, no fetch.
 - `facts.ts` — pure derivation of ActivityFacts from raw API data + manual override.

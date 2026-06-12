@@ -853,8 +853,8 @@ function AppContent({ children }: { children: React.ReactNode }) {
                           ? t('Calendar')
                           : pathname?.includes('/reports')
                           ? t('Reports')
-                          : pathname?.includes('/day-night-flip')
-                          ? t('Day/Night Flip')
+                          : pathname?.includes('/rhythm')
+                          ? t('Rhythm')
                           : t('Full Log')}
                       </span>
                     </div>

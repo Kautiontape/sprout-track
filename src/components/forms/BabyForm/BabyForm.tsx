@@ -280,7 +280,7 @@ export default function BabyForm({
     ...(isEditing
       ? [{
           id: 'flip',
-          label: t('Day/Night Flip'),
+          label: t('Rhythm'),
           content: (
             <DayNightFlipTab
               config={flipConfig}

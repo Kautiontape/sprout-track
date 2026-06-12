@@ -41,7 +41,7 @@ export default function DayNightFlip() {
   }, []);
 
   if (!selectedBaby) {
-    return <div className={s.page}>{t('Select a baby to use Day/Night Flip')}</div>;
+    return <div className={s.page}>{t('Select a baby to use Rhythm')}</div>;
   }
 
   const config = mergeFlipConfig(
@@ -51,9 +51,9 @@ export default function DayNightFlip() {
   if (!config.enabled) {
     return (
       <div className={s.page}>
-        <div className={s.sectionTitle}>{t('Day/Night Flip is not enabled for this baby')}</div>
+        <div className={s.sectionTitle}>{t('Rhythm isn’t set up for this baby yet')}</div>
         <p className="text-sm text-gray-500">
-          {t('Turn it on under Settings → Config → Manage Babies → Edit → Day/Night Flip.')}
+          {t('Turn it on under Settings → Config → Manage Babies → Edit → Rhythm.')}
         </p>
       </div>
     );

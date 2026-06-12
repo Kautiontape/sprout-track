@@ -442,9 +442,9 @@ export const SideNav: React.FC<SideNavProps> = ({
             className="side-nav-item"
           />
           <SideNavItem
-            path="/day-night-flip"
-            label={t('Day/Night Flip')}
-            isActive={currentPath === '/day-night-flip'}
+            path="/rhythm"
+            label={t('Rhythm')}
+            isActive={currentPath === '/rhythm'}
             onClick={onNavigate}
             className="side-nav-item"
           />

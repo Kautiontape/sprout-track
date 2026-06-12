@@ -87,7 +87,7 @@ export default function DayNightFlipTab({ config, onChange, birthDate }: DayNigh
 
   return (
     <div className="space-y-3">
-      <Row label={t('Enable Day/Night Flip')}>
+      <Row label={t('Enable Rhythm')}>
         <input
           type="checkbox"
           className="form-checkbox h-4 w-4 text-teal-600 rounded border-gray-300"

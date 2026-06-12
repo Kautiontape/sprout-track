@@ -1,23 +1,30 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { cn } from '@/src/lib/utils';
 import { useBaby } from '@/app/context/baby';
 import { useLocalization } from '@/src/context/localization';
 import { mergeFlipConfig } from './protocol';
 import { resolveNow } from './engine';
+import { WizardId } from './wizards';
 import { useFlipData } from './useFlipData';
 import NowBanner from './NowBanner';
 import FlipTimers from './FlipTimers';
 import ModeRules from './ModeRules';
 import EscalationBanner from './EscalationBanner';
+import WizardPanel from './WizardPanel';
+import FlipSchedule from './FlipSchedule';
+import FlipFaq from './FlipFaq';
 import { flipStyles as s } from './day-night-flip.styles';
 import './day-night-flip.css';
 
 export default function DayNightFlip() {
   const { t } = useLocalization();
   const { selectedBaby } = useBaby();
-  const { facts, loading, error, override, setOverride, clearOverride, alsoLogIt } = useFlipData();
+  const { facts, todayLogs, loading, error, override, setOverride, clearOverride, alsoLogIt } = useFlipData();
   const [now, setNow] = useState<Date>(() => new Date());
+  const [view, setView] = useState<'now' | 'schedule' | 'why'>('now');
+  const [activeWizard, setActiveWizard] = useState<WizardId | null>(null);
 
   // live tick — ActiveFeedBanner pattern (interval + visibilitychange)
   useEffect(() => {
@@ -74,24 +81,83 @@ export default function DayNightFlip() {
           {t('Past ~10 weeks the protocol sunsets: relax the contrast rules, white noise may return for naps, and the schedule can mature. (R-43)')}
         </div>
       )}
-      <NowBanner
-        state={state}
-        override={override}
-        onOverride={handleOverride}
-        onClearOverride={clearOverride}
-      />
-      {state.nudges.length > 0 && (
-        <div className={s.section}>
-          {state.nudges.map(n => (
-            <div key={n.id} className={s.nudge}>
-              <span className="font-mono text-xs opacity-60">{n.id}</span> {n.text}
-            </div>
-          ))}
-        </div>
+
+      <div className={s.toggle.row} role="tablist">
+        {([['now', t('Now')], ['schedule', t('Schedule')], ['why', t('Why')]] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={view === id}
+            className={cn(s.toggle.btn, view === id && cn(s.toggle.btnActive, 'active-dark'))}
+            onClick={() => setView(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'schedule' && (
+        <FlipSchedule config={config} facts={facts} todayLogs={todayLogs} now={now} />
       )}
-      <FlipTimers state={state} config={config} />
-      <ModeRules mode={state.mode} />
-      <EscalationBanner state={state} />
+      {view === 'why' && <FlipFaq />}
+      {view === 'now' && (
+        <>
+          <NowBanner
+            state={state}
+            override={override}
+            onOverride={handleOverride}
+            onClearOverride={clearOverride}
+          />
+          {state.nudges.length > 0 && (
+            <div className={s.section}>
+              {state.nudges.map(n => (
+                <div key={n.id} className={s.nudge}>
+                  <span className="font-mono text-xs opacity-60">{n.id}</span> {n.text}
+                  {n.id === 'R-16' && (
+                    <button
+                      type="button"
+                      className="underline ml-1 font-medium"
+                      onClick={() => setActiveWizard('rescue')}
+                    >
+                      {t('Rescue →')}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {activeWizard ? (
+            <WizardPanel
+              wizardId={activeWizard}
+              config={config}
+              now={now}
+              onClose={() => setActiveWizard(null)}
+            />
+          ) : (
+            <div className={s.section}>
+              <div className={s.sectionTitle}>{t('When it goes sideways')}</div>
+              <div className={s.wizard.entryGrid}>
+                <button type="button" className={s.wizard.entryBtn} onClick={() => setActiveWizard('rescue')}>
+                  {t('Putdown isn’t working')}
+                </button>
+                <button type="button" className={s.wizard.entryBtn} onClick={() => setActiveWizard('pacifier')}>
+                  {t('Pacifier keeps failing')}
+                </button>
+                <button type="button" className={s.wizard.entryBtn} onClick={() => setActiveWizard('gas')}>
+                  {t('Gas check')}
+                </button>
+                <button type="button" className={s.wizard.entryBtn} onClick={() => setActiveWizard('bottle')}>
+                  {t('Finished the bottle, still hungry?')}
+                </button>
+              </div>
+            </div>
+          )}
+          <FlipTimers state={state} config={config} />
+          <ModeRules mode={state.mode} />
+          <EscalationBanner state={state} />
+        </>
+      )}
     </div>
   );
 }

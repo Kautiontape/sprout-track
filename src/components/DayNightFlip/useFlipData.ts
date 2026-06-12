@@ -5,6 +5,7 @@ import { useBaby } from '@/app/context/baby';
 import { useFamily } from '@/src/context/family';
 import { deriveFacts, FlipOverride, RawActivityData } from './facts';
 import { ActivityFacts } from './engine';
+import { TodayLogs } from './schedule';
 
 const authHeaders = (): HeadersInit => {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -31,6 +32,7 @@ export function useFlipData() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [raw, setRaw] = useState<RawActivityData | null>(null);
+  const [todayLogs, setTodayLogs] = useState<TodayLogs>({ sleeps: [], feeds: [] });
 
   const babyId = selectedBaby?.id;
   const familyId = family?.id;
@@ -55,7 +57,7 @@ export function useFlipData() {
       const start = new Date(now.getTime() - 7 * 86400000).toISOString();
       const end = new Date(now.getTime() + 86400000).toISOString();
       const dStart = new Date(now.getTime() - 2 * 86400000).toISOString();
-      const [sleepLogs, lastFeed, diaperLogs, weights] = await Promise.all([
+      const [sleepLogs, lastFeed, diaperLogs, weights, feedsRecent] = await Promise.all([
         getJson<{ startTime: string; endTime: string | null }[]>(
           `/api/sleep-log?babyId=${babyId}&startDate=${start}&endDate=${end}`),
         getJson<{ time: string; endTime?: string | null }>(
@@ -64,6 +66,8 @@ export function useFlipData() {
           `/api/diaper-log?babyId=${babyId}&startDate=${dStart}&endDate=${end}`),
         getJson<{ date: string; value: number; unit: string }[]>(
           `/api/measurement-log?babyId=${babyId}&type=WEIGHT`),
+        getJson<{ time: string }[]>(
+          `/api/feed-log?babyId=${babyId}&startDate=${new Date(now.getTime() - 36 * 3600 * 1000).toISOString()}&endDate=${end}`),
       ]);
       setRaw({
         sleepLogs: sleepLogs ?? [],
@@ -71,6 +75,13 @@ export function useFlipData() {
         diaperLogs: diaperLogs ?? [],
         weights: weights ?? [],
         birthDate: String(selectedBaby.birthDate),
+      });
+      setTodayLogs({
+        sleeps: (sleepLogs ?? []).map(l => ({
+          start: new Date(l.startTime),
+          end: l.endTime ? new Date(l.endTime) : null,
+        })),
+        feeds: (feedsRecent ?? []).map(f => new Date(f.time)),
       });
     } catch (e) {
       console.error('flip data fetch failed:', e);
@@ -146,5 +157,5 @@ export function useFlipData() {
     [babyId, refresh],
   );
 
-  return { facts, loading, error, override, setOverride, clearOverride, alsoLogIt, refresh };
+  return { facts, todayLogs, loading, error, override, setOverride, clearOverride, alsoLogIt, refresh };
 }

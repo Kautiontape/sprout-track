@@ -53,7 +53,7 @@ test('no orphan nodes', () => {
     let grew = true;
     while (grew) {
       grew = false;
-      for (const key of [...reachable]) {
+      for (const key of Array.from(reachable)) {
         const node = w.nodes[key];
         const refs = node.kind === 'question'
           ? node.options.map(o => o.to)
@@ -63,6 +63,6 @@ test('no orphan nodes', () => {
         }
       }
     }
-    assert.deepEqual([...reachable].sort(), Object.keys(w.nodes).sort(), `${id} all nodes reachable`);
+    assert.deepEqual(Array.from(reachable).sort(), Object.keys(w.nodes).sort(), `${id} all nodes reachable`);
   }
 });

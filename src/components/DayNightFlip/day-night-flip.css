@@ -34,3 +34,29 @@ html.dark .flip-escalation-reference {
 html.dark .flip-disclaimer {
   color: #6b7280 !important;
 }
+
+html.dark .flip-wizard-panel {
+  background-color: #1f2937 !important;
+  border-color: #0f766e !important;
+  color: #e5e7eb;
+}
+html.dark .flip-wizard-title { color: #5eead4 !important; }
+html.dark .flip-wizard-option,
+html.dark .flip-wizard-entry {
+  background-color: #111827 !important;
+  border-color: #4b5563 !important;
+  color: #e5e7eb !important;
+}
+html.dark .flip-wizard-why { color: #9ca3af !important; }
+html.dark .flip-wizard-rulechip {
+  background-color: #111827 !important;
+  border-color: #4b5563 !important;
+  color: #9ca3af !important;
+}
+
+html.dark .flip-toggle-btn { color: #9ca3af; }
+html.dark .flip-toggle-btn.active-dark {
+  background: #1f2937 !important;
+  color: #5eead4 !important;
+  border-color: #0f766e !important;
+}

@@ -71,11 +71,15 @@ export function resolveNow(config: FlipConfig, facts: ActivityFacts, now: Date):
   const phase: FlipPhase = ageWeeks < 2 ? 'pre' : ageWeeks > 10 ? 'sunset' : 'active';
 
   // --- timers (stale facts are treated as unknown) ---
-  const rawNapElapsed = facts.napStartTime ? minutesBetween(now, facts.napStartTime) : null;
+  // A fact a couple of minutes ahead of `now` is clock skew (e.g. an override
+  // set between UI ticks), not bad data — clamp it to 0 rather than reject it.
+  const clampSkew = (min: number | null) =>
+    min !== null && min >= -2 ? Math.max(0, min) : min;
+  const rawNapElapsed = clampSkew(facts.napStartTime ? minutesBetween(now, facts.napStartTime) : null);
   const sleeping = rawNapElapsed !== null && rawNapElapsed >= 0 && rawNapElapsed < STALE_FACT_MIN;
   const napElapsedMin = sleeping ? rawNapElapsed : null;
 
-  const rawWakeElapsed = facts.lastWakeTime ? minutesBetween(now, facts.lastWakeTime) : null;
+  const rawWakeElapsed = clampSkew(facts.lastWakeTime ? minutesBetween(now, facts.lastWakeTime) : null);
   const wakeKnown = rawWakeElapsed !== null && rawWakeElapsed >= 0 && rawWakeElapsed < STALE_FACT_MIN;
   const wakeWindowElapsedMin = !sleeping && wakeKnown ? rawWakeElapsed : null;
 

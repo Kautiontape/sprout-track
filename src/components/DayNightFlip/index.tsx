@@ -59,6 +59,7 @@ export default function DayNightFlip() {
   const state = resolveNow(config, facts, now);
 
   const handleOverride = (kind: 'wake' | 'down', time: Date, alsoLog: boolean) => {
+    setNow(new Date()); // don't wait for the next tick to reflect the override
     setOverride(kind, time);
     if (alsoLog) void alsoLogIt(kind, time);
   };

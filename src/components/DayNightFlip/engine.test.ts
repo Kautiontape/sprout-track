@@ -151,6 +151,18 @@ test('intake: projected weight and daily target ranges from latest weight', () =
   assert.equal(resolveNow(CFG, facts({ lastWakeTime: at(10, 0) }), at(10, 0)).intake, null);
 });
 
+test('wake time slightly ahead of a stale now still counts as awake (clock skew)', () => {
+  // "Mark awake now" can land a wake time a few seconds after the last UI tick
+  const wake = new Date(at(10, 0).getTime() + 30_000); // 10:00:30
+  const s = resolveNow(CFG, facts({ lastWakeTime: wake }), at(10, 0));
+  assert.equal(s.currentBlock, 'awake');
+  assert.equal(s.timers.wakeWindowElapsedMin, 0);
+  // same for a just-started nap
+  const nap = new Date(at(10, 0).getTime() + 30_000);
+  const s2 = resolveNow(CFG, facts({ napStartTime: nap, lastWakeTime: at(9, 0) }), at(10, 0));
+  assert.equal(s2.currentBlock, 'nap');
+});
+
 test('R-43 sunset: age > 10 weeks', () => {
   const oldBaby = facts({ lastWakeTime: at(10, 0), birthDate: at(0, 0, -11 * 7) });
   assert.equal(resolveNow(CFG, oldBaby, at(10, 30)).phase, 'sunset');

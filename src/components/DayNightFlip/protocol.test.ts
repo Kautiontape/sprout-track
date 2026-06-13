@@ -20,6 +20,7 @@ test('defaults match the source ruleset config block', () => {
   assert.deepEqual(DEFAULT_FLIP_CONFIG.feeding.growthOzPerDay, [0.5, 1.0]);
   assert.deepEqual(DEFAULT_FLIP_CONFIG.durations, {
     fussWaitMin: [5, 10], putdownAbandonMin: 20, rescueNapMaxMin: 90,
+    bedtimeRoutineMin: 30,
   });
 });
 
@@ -39,6 +40,7 @@ test('mergeFlipConfig: null/garbage/partial all merge over defaults', () => {
   assert.equal(partial.anchors.bedtimeRoutine, '19:15'); // default survives
   assert.equal(partial.dayMode.napCapHr, 1.5);
   assert.equal(partial.dayMode.wakeWindowCeilingMin, 75); // default survives
+  assert.equal(partial.durations.bedtimeRoutineMin, 30); // new field backfills old configs
 });
 
 test('FAQ bank has the 11 ruleset entries', () => {

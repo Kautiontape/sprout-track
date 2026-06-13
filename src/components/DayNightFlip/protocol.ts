@@ -25,6 +25,7 @@ export type FlipConfig = {
     fussWaitMin: [number, number];
     putdownAbandonMin: number;
     rescueNapMaxMin: number;
+    bedtimeRoutineMin: number;
   };
 };
 
@@ -45,7 +46,7 @@ export const DEFAULT_FLIP_CONFIG: FlipConfig = {
     scheduledFeeds: ['23:00', '02:00', '05:00'],
   },
   feeding: { dailyOzPerLb: [2.0, 2.5], growthOzPerDay: [0.5, 1.0] },
-  durations: { fussWaitMin: [5, 10], putdownAbandonMin: 20, rescueNapMaxMin: 90 },
+  durations: { fussWaitMin: [5, 10], putdownAbandonMin: 20, rescueNapMaxMin: 90, bedtimeRoutineMin: 30 },
 };
 
 // A missing or partial column merges over the defaults so old babies and

@@ -87,6 +87,34 @@ test('R-21 early bedtime: final wake at 17:30 pulls routine to ~18:30', () => {
   assert.equal(resolveNow(CFG, mid, at(11, 5)).currentBlock, 'awake');
 });
 
+test('R-24: routine guidance says down by the computed putdown, not night_start', () => {
+  // R-21 night: wake 17:30 -> routine 18:30, putdown clamped to 17:30 + 75m = 18:45
+  const f = facts({ lastWakeTime: at(17, 30), lastFeedTime: at(17, 45) });
+  const s = resolveNow(CFG, f, at(18, 35));
+  assert.equal(s.currentBlock, 'bedtime-routine');
+  assert.match(s.nextAction, /18:45/);
+  assert.ok(!s.nextAction.includes('20:00'), 'night_start is not a putdown target');
+  // anchor night: wake 18:30 -> routine 19:15, putdown 19:45
+  const f2 = facts({ lastWakeTime: at(18, 30), lastFeedTime: at(18, 30) });
+  const s2 = resolveNow(CFG, f2, at(19, 20));
+  assert.match(s2.nextAction, /19:45/);
+});
+
+test('R-23: evening crash after a feed reads as the night, with a nudge', () => {
+  const f = facts({ napStartTime: at(18, 45), lastWakeTime: at(17, 45), lastFeedTime: at(18, 20) });
+  const s = resolveNow(CFG, f, at(18, 50));
+  assert.equal(s.currentBlock, 'night-sleep');
+  assert.ok(s.nudges.some(n => n.id === 'R-23'));
+});
+
+test('R-23: evening crash without a feed plans a 30-minute micro-nap', () => {
+  const f = facts({ napStartTime: at(18, 45), lastWakeTime: at(17, 45), lastFeedTime: at(16, 30) });
+  const s = resolveNow(CFG, f, at(18, 50));
+  assert.equal(s.currentBlock, 'nap');
+  assert.ok(s.nudges.some(n => n.id === 'R-23'));
+  assert.match(s.nextAction, /19:15/); // wake her at crash + 30m, not at the 2h cap
+});
+
 test('catnap slot labels the awake block', () => {
   const f = facts({ lastWakeTime: at(16, 50), lastFeedTime: at(16, 55) });
   const s = resolveNow(CFG, f, at(17, 10));

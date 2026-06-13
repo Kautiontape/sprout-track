@@ -31,3 +31,14 @@ Phase 2 additions:
   section when enabled — reflects logged data only (no local override) and uses
   the server TZ. Staged HA sensors:
   `~/documents/apps/homeassistant-config/.local-backups/sprouty-flip-sensors.yaml`.
+
+Evening putdown (R-24) and early crash (R-23) — see
+docs/superpowers/specs/2026-06-12-rhythm-putdown-diagnosis.md:
+- The putdown is an explicit `putdown` timeline event computed by
+  `putdownTime()` in `engine.ts` (routine start + `durations.bedtimeRoutineMin`,
+  capped at bedtime anchor + 30 min and at the wake-window ceiling after the
+  final wake). `night_start` only flips the environment ("Night mode" block);
+  it is never a putdown target.
+- A crash between `lastWakeBy` and `night_start` converts to the night when
+  fed within ~45 min (night feed estimates shift earlier, morning anchor
+  holds) or becomes a 30-minute micro-nap + compressed routine when unfed.

@@ -79,6 +79,21 @@ export function sleepState(facts: ActivityFacts, now: Date): SleepState {
   return { sleeping, wakeKnown, napElapsedMin: sleeping ? rawNapElapsed : null, rawWakeElapsed };
 }
 
+// R-24: the putdown time is decided by the awake window and the routine
+// length, never by night_start (that anchor only flips the environment).
+// Shared by resolveNow and projectDay so live guidance and the timeline
+// can never disagree about when she goes down.
+export function putdownTime(
+  config: FlipConfig, finalWake: Date, routineStart: Date, bedtimeAnchor: Date,
+): Date {
+  let down = addMinutes(routineStart, config.durations.bedtimeRoutineMin);
+  const anchorCap = addMinutes(bedtimeAnchor, 30);
+  const ceilingCap = addMinutes(finalWake, config.dayMode.wakeWindowCeilingMin);
+  if (down > anchorCap) down = anchorCap;
+  if (down > ceilingCap) down = ceilingCap; // compress the routine, never stretch the window
+  return down < routineStart ? routineStart : down;
+}
+
 const RESCUE_FINAL_NAP_AFTER_MIN = 16 * 60; // R-20: rescue at/after ~16:00
 
 export type RescueTiming = {
@@ -134,15 +149,36 @@ export function resolveNow(config: FlipConfig, facts: ActivityFacts, now: Date):
     if (wakeMin >= catnapStartMin && projected < bedtimeMin) r21RoutineStartMin = projected;
   }
 
+  // R-23: a crash past lastWakeBy, before night_start, ends the day early —
+  // fed within ~45min it converts to the night; unfed it stays a micro-nap.
+  const lastWakeByMin = parseHHMM(config.dayMode.lastWakeBy);
+  const eveningCrash = sleeping && mode === 'day' && facts.napStartTime !== null
+    && minutesOfDay(facts.napStartTime) >= lastWakeByMin;
+  const crashFed = eveningCrash && facts.lastFeedTime !== null
+    && minutesBetween(facts.napStartTime!, facts.lastFeedTime) <= 45;
+
   // --- block resolution (spec section 5 order) ---
   let currentBlock: FlipBlock;
   if (!sleeping && !wakeKnown) currentBlock = 'needs-input';
-  else if (sleeping) currentBlock = mode === 'day' ? 'nap' : 'night-sleep';
+  else if (sleeping) currentBlock = mode === 'day' && !crashFed ? 'nap' : 'night-sleep';
   else if (mode === 'night') currentBlock = nowMin < dayStartMin ? 'night-hold' : 'night-feed';
   else if (feedDue) currentBlock = 'feed-due';
   else if (nowMin >= bedtimeMin || (r21RoutineStartMin !== null && nowMin >= r21RoutineStartMin)) {
     currentBlock = 'bedtime-routine';
   } else currentBlock = 'awake';
+
+  // R-24: the live "down by" target is the computed putdown, never night_start.
+  let putdownAt: Date | null = null;
+  if (currentBlock === 'bedtime-routine' && facts.lastWakeTime) {
+    const timeOn = (m: number) => {
+      const d = new Date(now);
+      d.setHours(Math.floor(m / 60), m % 60, 0, 0);
+      return d;
+    };
+    const routineMin = r21RoutineStartMin !== null && r21RoutineStartMin < bedtimeMin
+      ? r21RoutineStartMin : bedtimeMin;
+    putdownAt = putdownTime(config, facts.lastWakeTime, timeOn(routineMin), timeOn(bedtimeMin));
+  }
 
   const inCatnapSlot =
     currentBlock === 'awake' && nowMin >= catnapStartMin && nowMin < catnapEndMin;
@@ -167,6 +203,14 @@ export function resolveNow(config: FlipConfig, facts: ActivityFacts, now: Date):
   if (r21RoutineStartMin !== null && currentBlock === 'bedtime-routine' && nowMin < bedtimeMin) {
     nudges.push({ id: 'R-21', text: 'Bedtime comes early tonight. Don\'t stretch her to hit the usual clock time; the normal schedule picks back up tomorrow.' });
   }
+  if (eveningCrash) {
+    nudges.push({
+      id: 'R-23',
+      text: crashFed
+        ? 'She crashed for the night early, fed and done. Keep it dark with white noise from now; the morning anchor does not move.'
+        : `She crashed before bedtime without a full feed. Wake her by ${fmtClock(addMinutes(facts.napStartTime!, 30))} for a compressed routine and a full feed, then down for the night.`,
+    });
+  }
 
   const escalations = buildEscalations(config, facts);
   const intake = buildIntake(config, facts, now);
@@ -189,6 +233,7 @@ export function resolveNow(config: FlipConfig, facts: ActivityFacts, now: Date):
     currentBlock, inCatnapSlot, config, facts,
     wakeWindowElapsedMin, sinceLastFeedMin,
     napCapHit, feedDue, overtired,
+    putdownAt, r23MicroNap: eveningCrash && !crashFed,
   });
 
   return {
@@ -211,6 +256,8 @@ type DescribeInput = {
   napCapHit: boolean;
   feedDue: boolean;
   overtired: boolean;
+  putdownAt: Date | null;
+  r23MicroNap: boolean;
 };
 
 function describeBlock(i: DescribeInput): { blockLabel: string; nextAction: string } {
@@ -222,6 +269,10 @@ function describeBlock(i: DescribeInput): { blockLabel: string; nextAction: stri
         nextAction: 'There is no recent sleep data. Set her last wake time below to get started.',
       };
     case 'nap': {
+      if (i.r23MicroNap) {
+        const wakeBy = i.facts.napStartTime ? fmtClock(addMinutes(i.facts.napStartTime, 30)) : '';
+        return { blockLabel: 'Micro-nap (keep it short)', nextAction: `Keep this a 20–30 minute doze. Wake her by ${wakeBy}, then a compressed routine with a full feed, and down for the night.` };
+      }
       if (i.napCapHit) return { blockLabel: 'Nap (cap reached)', nextAction: `Wake her up. This nap hit its ${c.dayMode.napCapHr}-hour cap.` };
       if (i.feedDue) return { blockLabel: 'Nap (feed overdue)', nextAction: `Wake her for a feed. It has been over ${c.dayMode.feedIntervalMaxHr} hours.` };
       const wakeBy = i.facts.napStartTime ? fmtClock(addMinutes(i.facts.napStartTime, c.dayMode.napCapHr * 60)) : '';
@@ -236,7 +287,7 @@ function describeBlock(i: DescribeInput): { blockLabel: string; nextAction: stri
     case 'feed-due':
       return { blockLabel: 'Feed due', nextAction: `Time to feed. It has been ${i.sinceLastFeedMin !== null ? fmtMin(i.sinceLastFeedMin) : 'a while'} (the daytime max is ${c.dayMode.feedIntervalMaxHr} hours).` };
     case 'bedtime-routine':
-      return { blockLabel: 'Bedtime routine', nextAction: `Start the wind-down: feed, fresh swaddle, dim room. Down by ${c.anchors.nightStart}.` };
+      return { blockLabel: 'Bedtime routine', nextAction: `Start the wind-down: feed, fresh swaddle, dim room. Down by ${i.putdownAt ? fmtClock(i.putdownAt) : c.anchors.bedtimeRoutine}.` };
     case 'awake': {
       if (i.overtired) {
         return { blockLabel: 'Awake (overtired)', nextAction: `She has been up ${fmtMin(i.wakeWindowElapsedMin!)}, past the ${c.dayMode.wakeWindowCeilingMin}-minute ceiling. Rescue the nap now: hold her, use motion, or feed her down, whatever works fastest.` };

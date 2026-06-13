@@ -186,6 +186,9 @@ export default function DayNightFlipTab({ config, onChange, birthDate }: DayNigh
         <Row label={t('Rescue nap max (minutes)')}>
           <NumberInput value={config.durations.rescueNapMaxMin} step={5} onChange={v => set({ durations: { ...config.durations, rescueNapMaxMin: v } })} />
         </Row>
+        <Row label={t('Bedtime routine length (minutes)')}>
+          <NumberInput value={config.durations.bedtimeRoutineMin} step={5} onChange={v => set({ durations: { ...config.durations, bedtimeRoutineMin: v } })} />
+        </Row>
       </Section>
     </div>
   );

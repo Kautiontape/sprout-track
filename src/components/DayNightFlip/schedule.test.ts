@@ -50,6 +50,111 @@ test('late final wake pulls the routine early (R-21)', () => {
   assert.equal(routine.start.getMinutes(), 30); // 17:30 + 60m < 19:15
 });
 
+test('R-24 screenshot regression: nap ending 17:03 puts her down 18:15–19:00, not 20:00', () => {
+  // the logged day from the bug report: awake 14:03, fed 14:20, now 14:21
+  const f = facts({ lastWakeTime: at(14, 3), lastFeedTime: at(14, 20) });
+  const { blocks } = projectDay(CFG, f, noLogs, at(14, 21));
+  const putdown = kindAt(blocks, 'putdown');
+  assert.equal(putdown.length, 1, 'putdown is an explicit timeline event');
+  const downMin = putdown[0].start.getHours() * 60 + putdown[0].start.getMinutes();
+  assert.ok(downMin >= 18 * 60 + 15 && downMin <= 19 * 60,
+    `putdown lands 18:15–19:00, got ${Math.floor(downMin / 60)}:${downMin % 60}`);
+  // the routine block ends at the putdown, never at night_start
+  const routine = kindAt(blocks, 'bedtime-routine')[0];
+  assert.equal(routine.end!.getTime(), putdown[0].start.getTime());
+});
+
+test('R-24: night_start is an environment boundary, never the putdown target', () => {
+  // nominal night: catnap ended at lastWakeBy 18:30, fed 18:00
+  const f = facts({ lastWakeTime: at(18, 30), lastFeedTime: at(18, 0) });
+  const { blocks } = projectDay(CFG, f, noLogs, at(18, 40));
+  const putdown = kindAt(blocks, 'putdown')[0];
+  assert.equal(putdown.start.getHours(), 19);
+  assert.equal(putdown.start.getMinutes(), 45); // anchor 19:15 + 30m routine = wake + 75m
+  assert.equal(putdown.label, 'Down for the night');
+  // the 20:00 anchor block is the mode flip, not the putdown
+  const modeBlock = blocks.find(b => b.source === 'anchor' && b.start.getHours() === 20)!;
+  assert.equal(modeBlock.label, 'Night mode');
+});
+
+test('R-24: the early-night note rides on the putdown event (R-21 night)', () => {
+  const f = facts({ lastWakeTime: at(17, 30), lastFeedTime: at(17, 40) });
+  const { blocks } = projectDay(CFG, f, noLogs, at(17, 45));
+  const putdown = kindAt(blocks, 'putdown')[0];
+  assert.match(putdown.note ?? '', /Earlier than usual tonight/);
+  // routine 18:30 (R-21), putdown clamped to wake 17:30 + 75m ceiling = 18:45
+  assert.equal(putdown.start.getHours(), 18);
+  assert.equal(putdown.start.getMinutes(), 45);
+});
+
+test('R-24: a too-early final wake gets a catnap, not a stretched window', () => {
+  const f = facts({ lastWakeTime: at(16, 30), lastFeedTime: at(16, 30) });
+  const { blocks } = projectDay(CFG, f, noLogs, at(16, 35));
+  assert.equal(kindAt(blocks, 'catnap').length, 1);
+  // catnap 17:30–18:15, routine at anchor 19:15, down 19:30 (= 18:15 wake + 75m)
+  const putdown = kindAt(blocks, 'putdown')[0];
+  assert.equal(putdown.start.getHours(), 19);
+  assert.equal(putdown.start.getMinutes(), 30);
+});
+
+test('R-24 validation: no projected awake stretch exceeds the ceiling', () => {
+  const fmt = (d: Date) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+  for (let wakeMin = 12 * 60; wakeMin <= 18 * 60 + 30; wakeMin += 7) {
+    const wake = at(Math.floor(wakeMin / 60), wakeMin % 60);
+    const f = facts({ lastWakeTime: wake, lastFeedTime: wake });
+    const { blocks } = projectDay(CFG, f, noLogs, new Date(wake.getTime() + 5 * 60000));
+    assert.equal(kindAt(blocks, 'putdown').length, 1, `wake ${fmt(wake)}: exactly one putdown`);
+    let currentWake = wake;
+    for (const b of blocks) {
+      if (b.kind !== 'putdown' && !((b.kind === 'nap' || b.kind === 'catnap') && b.source === 'projected' && b.end)) continue;
+      const stretch = (b.start.getTime() - currentWake.getTime()) / 60000;
+      assert.ok(stretch <= CFG.dayMode.wakeWindowCeilingMin,
+        `wake ${fmt(wake)}: ${stretch}min awake before ${b.kind} at ${fmt(b.start)}`);
+      if (b.end) currentWake = b.end;
+    }
+  }
+});
+
+test('R-23: evening crash after a full feed converts to night start', () => {
+  // fed 18:20, crashed 18:45 (past lastWakeBy 18:30), now 18:50
+  const f = facts({ napStartTime: at(18, 45), lastWakeTime: at(17, 45), lastFeedTime: at(18, 20) });
+  const logs = { sleeps: [{ start: at(18, 45), end: null }], feeds: [at(18, 20)] };
+  const { blocks } = projectDay(CFG, f, logs, at(18, 50));
+  // the putdown IS the crash — no routine, no second putdown
+  const putdown = kindAt(blocks, 'putdown');
+  assert.equal(putdown.length, 1);
+  assert.equal(putdown[0].start.getTime(), at(18, 45).getTime());
+  assert.equal(kindAt(blocks, 'bedtime-routine').length, 0);
+  // night feed estimates shift 75min earlier (night effectively began 18:45)
+  const nightFeeds = kindAt(blocks, 'night-feed');
+  assert.equal(nightFeeds[0].start.getHours(), 21);
+  assert.equal(nightFeeds[0].start.getMinutes(), 45);
+  assert.equal(nightFeeds[1].start.getDate(), 13); // 00:45 lands tomorrow
+  // the morning anchor does not move
+  const hold = kindAt(blocks, 'night-hold')[0];
+  assert.equal(hold.end!.getHours(), 8);
+  assert.equal(hold.end!.getDate(), 13);
+});
+
+test('R-23: evening crash without a feed becomes a 30-minute micro-nap, then down', () => {
+  // last feed 16:30 (not within 45min of the crash), crashed 18:45, now 18:50
+  const f = facts({ napStartTime: at(18, 45), lastWakeTime: at(17, 45), lastFeedTime: at(16, 30) });
+  const logs = { sleeps: [{ start: at(18, 45), end: null }], feeds: [at(16, 30)] };
+  const { blocks } = projectDay(CFG, f, logs, at(18, 50));
+  // the live sleep is planned as a micro-nap, woken at +30
+  const live = blocks.find(b => b.kind === 'nap' && b.source === 'projected')!;
+  assert.equal(live.end!.getTime(), at(19, 15).getTime());
+  // then a compressed routine with a full feed, and down
+  const routine = kindAt(blocks, 'bedtime-routine')[0];
+  assert.equal(routine.start.getTime(), at(19, 15).getTime());
+  assert.match(routine.note ?? '', /full feed/i);
+  const putdown = kindAt(blocks, 'putdown')[0];
+  assert.equal(putdown.start.getHours(), 19);
+  assert.equal(putdown.start.getMinutes(), 45);
+  // night feed estimates do not shift — she still gets the 23:00 estimate
+  assert.equal(kindAt(blocks, 'night-feed')[0].start.getHours(), 23);
+});
+
 test('actual logged sleeps and feeds appear as actual blocks', () => {
   const logs = {
     sleeps: [{ start: at(9, 0), end: at(10, 30) }],
@@ -80,7 +185,7 @@ test('early-morning now (02:00): window starts at yesterday’s day_start, isNow
   assert.ok(['night-hold', 'night-feed', 'night-sleep'].includes(nowBlock.kind));
 });
 
-test('open sleep from before night start: NOW lands on Down for the night', () => {
+test('open sleep from before night start: NOW lands on the night-mode block', () => {
   // went down 18:20, fed 21:24 (still logged as asleep), now 22:27
   const f = facts({ napStartTime: at(18, 20), lastWakeTime: at(17, 30), lastFeedTime: at(21, 24) });
   const logs = { sleeps: [{ start: at(18, 20), end: null }], feeds: [at(21, 24)] };
@@ -89,7 +194,7 @@ test('open sleep from before night start: NOW lands on Down for the night', () =
   assert.equal(live.end!.getHours(), 20); // early sleep clips at night start
   assert.equal(live.isNow, false);
   const nowBlock = blocks.find(b => b.isNow)!;
-  assert.equal(nowBlock.label, 'Down for the night');
+  assert.equal(nowBlock.label, 'Night mode');
 });
 
 test('needs-input facts fall back to the template', () => {

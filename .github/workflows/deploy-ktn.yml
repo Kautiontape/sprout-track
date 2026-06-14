@@ -2,10 +2,10 @@ name: Deploy to ktn
 on:
   # Auto-deploy after each successful image build. Enable (uncomment) after the
   # first cutover to the GHCR image is verified.
-  # workflow_run:
-  #   workflows: ['build & publish']
-  #   types: [completed]
-  #   branches: [main]
+  workflow_run:
+    workflows: ['build & publish']
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 jobs:
   deploy:

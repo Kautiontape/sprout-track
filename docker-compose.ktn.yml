@@ -1,8 +1,6 @@
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/kautiontape/sprout-track:latest
     ports: !override
       - "127.0.0.1:8109:3000"
     environment:

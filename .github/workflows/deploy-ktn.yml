@@ -1,23 +1,29 @@
 name: Deploy to ktn
-
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - '**/*.md'
-      - 'ktn-scripts/**'
-      - '.dockerignore'
-      - '.gitignore'
+  # Auto-deploy after each successful image build. Enable (uncomment) after the
+  # first cutover to the GHCR image is verified.
+  # workflow_run:
+  #   workflows: ['build & publish']
+  #   types: [completed]
+  #   branches: [main]
   workflow_dispatch:
-
 jobs:
   deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [self-hosted, ktn]
+    permissions:
+      packages: read
     steps:
-      - name: Deploy
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Pull image and restart (no on-box build)
         run: |
           cd /opt/services/sprout-track
           git fetch origin
           git reset --hard origin/main
-          docker compose -f docker-compose.yml -f docker-compose.ktn.yml up -d --build
+          # Pull the prebuilt image explicitly (the app service also carries a
+          # build: from the base compose; `compose pull` can skip buildable
+          # services, so pull by ref to be unambiguous), then start without build.
+          docker pull ghcr.io/kautiontape/sprout-track:latest
+          docker compose -f docker-compose.yml -f docker-compose.ktn.yml up -d --no-build
           docker image prune -f

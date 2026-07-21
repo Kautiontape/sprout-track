@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { 
   ChevronLeft,
   ChevronRight,
@@ -34,8 +34,7 @@ import TimelineV2Heatmap from './TimelineV2Heatmap';
 import { useLocalization } from '@/src/context/localization';
 import { useTimezone } from '@/app/context/timezone';
 import { formatDateLong } from '@/src/utils/dateFormat';
-import { convertVolume } from '@/src/utils/unit-conversion';
-import { useUnit } from '@/src/hooks/useUnit';
+import { getSymbol } from '@/src/hooks/useUnit';
 import { computeDayStats } from './computeDayStats';
 
 import './TimelineV2DailyStats.css';
@@ -85,7 +84,7 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
   enableBreastMilkTracking = true
 }) => {
   const { t } = useLocalization();
-  const { unitSymbol } = useUnit();
+  const unitSymbol = useCallback((unitAbbr?: string | null) => getSymbol(unitAbbr, t), [t]);
   const { dateFormat } = useTimezone();
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);

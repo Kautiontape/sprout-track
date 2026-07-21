@@ -33,7 +33,7 @@ import { ActivityType } from '../types';
 import TimelineV2Heatmap from './TimelineV2Heatmap';
 import { useLocalization } from '@/src/context/localization';
 import { useTimezone } from '@/app/context/timezone';
-import { formatDateLong } from '@/src/utils/dateFormat';
+import { formatDateLong, formatTimeDisplay } from '@/src/utils/dateFormat';
 import { getSymbol } from '@/src/hooks/useUnit';
 import { computeDayStats } from './computeDayStats';
 
@@ -70,6 +70,18 @@ interface StatTile {
   bgActiveColor: string;
   // Optional breakdown shown in a popover (e.g. breast milk vs formula split)
   breakdown?: { label: string; value: string }[];
+  // Running-average secondary line, e.g. "avg 6h 58m"
+  avg?: string;
+  // Today-only pace detail rendered in an (i) popover on the avg line
+  pace?: { usuallyText: string; statusLabel: string };
+}
+
+interface CoreAverages {
+  sleepMinutes: number;
+  feedCount: number;
+  bottleVolume: number;
+  wetCount: number;
+  poopCount: number;
 }
 
 const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
@@ -91,7 +103,7 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
 }) => {
   const { t } = useLocalization();
   const unitSymbol = useCallback((unitAbbr?: string | null) => getSymbol(unitAbbr, t), [t]);
-  const { dateFormat } = useTimezone();
+  const { dateFormat, timeFormat } = useTimezone();
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -101,6 +113,51 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
     const mins = minutes % 60;
     return `${hours}h ${mins}${t('min')}`;
   };
+
+  // Baseline averages over the avgDays days preceding the viewed day.
+  // Depends on `activities` (not just windowActivities) so the 30s polling
+  // re-truncates today's expected-by-now with a fresh "now".
+  const averages = useMemo(() => {
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const preferredUnit = defaultBottleUnit || 'OZ';
+
+    const fullDays: ReturnType<typeof computeDayStats>[] = [];
+    const truncatedDays: ReturnType<typeof computeDayStats>[] = [];
+
+    for (let i = 1; i <= avgDays; i++) {
+      const day = new Date(date);
+      day.setDate(day.getDate() - i);
+      const full = computeDayStats(windowActivities, day, { preferredUnit, unitSymbol });
+      if (!full.hasAnyActivity) continue; // untracked day — excluded from the baseline
+      fullDays.push(full);
+      if (isToday) {
+        const cutoff = new Date(day);
+        cutoff.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), 999);
+        truncatedDays.push(computeDayStats(windowActivities, day, { preferredUnit, unitSymbol, cutoff }));
+      }
+    }
+
+    if (fullDays.length === 0) return null;
+
+    const avgOf = (list: typeof fullDays): CoreAverages => {
+      const mean = (pick: (s: (typeof list)[number]) => number) =>
+        list.reduce((sum, s) => sum + pick(s), 0) / list.length;
+      return {
+        sleepMinutes: mean(s => s.totalSleepMinutes),
+        feedCount: mean(s => s.totalFeedCount),
+        bottleVolume: mean(s => s.bottleFeedTotal),
+        wetCount: mean(s => s.wetCount),
+        poopCount: mean(s => s.poopCount),
+      };
+    };
+
+    return {
+      full: avgOf(fullDays),
+      expectedByNow: isToday && truncatedDays.length > 0 ? avgOf(truncatedDays) : null,
+      asOf: now,
+    };
+  }, [windowActivities, activities, date, avgDays, defaultBottleUnit, unitSymbol]);
 
   // Calculate stats and create dynamic tiles
   const statTiles = useMemo(() => {
@@ -122,6 +179,31 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
       milestoneCount, measurementCount, playCount, totalPlayMinutes, vaccineCount,
     } = dayStats;
 
+    const round1 = (n: number) => Math.round(n * 10) / 10;
+    const roundAmount = (n: number) => Math.round(n * 100) / 100;
+
+    const buildPace = (
+      actual: number,
+      expected: number | undefined,
+      fmt: (n: number) => string
+    ): StatTile['pace'] => {
+      if (!averages?.expectedByNow || expected === undefined) return undefined;
+      let status: 'ahead' | 'behind' | 'on-pace';
+      if (expected <= 0) {
+        status = actual > 0 ? 'ahead' : 'on-pace';
+      } else if (actual >= expected * 1.1) {
+        status = 'ahead';
+      } else if (actual <= expected * 0.9) {
+        status = 'behind';
+      } else {
+        status = 'on-pace';
+      }
+      return {
+        usuallyText: `${t('Usually')} ${fmt(expected)} ${t('by')} ${formatTimeDisplay(averages.asOf, timeFormat)}`,
+        statusLabel: status === 'ahead' ? t('Ahead of pace') : status === 'behind' ? t('Behind pace') : t('On pace'),
+      };
+    };
+
     const tiles: StatTile[] = [];
 
     // Awake Time tile - always first
@@ -139,7 +221,8 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
     }
 
     // Sleep tile
-    if (totalSleepMinutes > 0) {
+    const sleepAvg = averages ? averages.full.sleepMinutes : null;
+    if (totalSleepMinutes > 0 || (sleepAvg ?? 0) > 0) {
       tiles.push({
         filter: 'sleep',
         label: t('Total Sleep'),
@@ -148,16 +231,18 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
         bgColor: 'bg-gray-50',
         iconColor: 'text-[#9ca3af]', // gray-400 - matches timeline
         borderColor: 'border-gray-500',
-        bgActiveColor: 'bg-gray-100'
+        bgActiveColor: 'bg-gray-100',
+        avg: sleepAvg !== null ? `${t('avg')} ${formatMinutes(Math.round(sleepAvg))}` : undefined,
+        pace: buildPace(totalSleepMinutes, averages?.expectedByNow?.sleepMinutes, (n) => formatMinutes(Math.round(n))),
       });
     }
 
     // Combined feed tile (bottle, breast, and solids)
-    if (totalFeedCount > 0) {
+    const feedAvg = averages ? averages.full.feedCount : null;
+    if (totalFeedCount > 0 || (feedAvg ?? 0) > 0) {
       // Format bottle feed amounts. The tile stays compact (total only); when more
       // than one bottle type is present, the breast milk vs formula split is shown
       // in a popover instead of widening the tile.
-      const roundAmount = (n: number) => Math.round(n * 100) / 100;
       let formattedBottleAmounts = '';
       let feedBreakdown: { label: string; value: string }[] | undefined;
       if (bottleFeedTotal > 0) {
@@ -223,12 +308,17 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
         iconColor: 'text-[#7dd3fc]', // sky-300 - matches timeline
         borderColor: 'border-gray-500',
         bgActiveColor: 'bg-gray-100',
-        breakdown: feedBreakdown
+        breakdown: feedBreakdown,
+        avg: feedAvg !== null
+          ? `${t('avg')} ${round1(feedAvg)}${averages!.full.bottleVolume > 0 ? ` · ${roundAmount(averages!.full.bottleVolume)} ${preferredUnit.toLowerCase()}` : ''}`
+          : undefined,
+        pace: buildPace(totalFeedCount, averages?.expectedByNow?.feedCount, (n) => String(round1(n))),
       });
     }
 
     // Wet diaper tile
-    if (wetCount > 0) {
+    const wetAvg = averages ? averages.full.wetCount : null;
+    if (wetCount > 0 || (wetAvg ?? 0) > 0) {
       tiles.push({
         filter: 'diaper',
         label: t('Wet Diapers'),
@@ -237,12 +327,15 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
         bgColor: 'bg-gray-50',
         iconColor: 'text-[#0d9488]', // teal-600 (green) - matches timeline for wet
         borderColor: 'border-gray-500',
-        bgActiveColor: 'bg-gray-100'
+        bgActiveColor: 'bg-gray-100',
+        avg: wetAvg !== null ? `${t('avg')} ${round1(wetAvg)}` : undefined,
+        pace: buildPace(wetCount, averages?.expectedByNow?.wetCount, (n) => String(round1(n))),
       });
     }
 
     // Poop tile
-    if (poopCount > 0) {
+    const poopAvg = averages ? averages.full.poopCount : null;
+    if (poopCount > 0 || (poopAvg ?? 0) > 0) {
       tiles.push({
         filter: 'poop',
         label: t('Poops'),
@@ -251,7 +344,9 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
         bgColor: 'bg-gray-50',
         iconColor: 'text-amber-700', // amber-700 for poops
         borderColor: 'border-gray-500',
-        bgActiveColor: 'bg-gray-100'
+        bgActiveColor: 'bg-gray-100',
+        avg: poopAvg !== null ? `${t('avg')} ${round1(poopAvg)}` : undefined,
+        pace: buildPace(poopCount, averages?.expectedByNow?.poopCount, (n) => String(round1(n))),
       });
     }
 
@@ -438,7 +533,7 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
     }
 
     return tiles;
-  }, [activities, date, t, defaultBottleUnit, unitSymbol]);
+  }, [activities, date, t, defaultBottleUnit, unitSymbol, averages, timeFormat]);
 
   const formatDateDisplay = (date: Date): string => {
     return formatDateLong(date, dateFormat);
@@ -627,6 +722,11 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
                             </Popover>
                           )}
                         </div>
+                        {tile.avg && (
+                          <div className="flex items-center gap-1 text-[10px] text-gray-400 font-medium leading-tight">
+                            <span>{tile.avg}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

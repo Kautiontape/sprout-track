@@ -116,6 +116,7 @@ async function handlePut(req: NextRequest, authContext: AuthResult) {
       'enableBreastMilkTracking',
       'includeSolidsInFeedTimer',
       'dateFormat', 'timeFormat',
+      'dailyStatsAvgDays',
     ];
 
     const isAdmin = authContext.caretakerRole === 'ADMIN' ||
@@ -131,7 +132,12 @@ async function handlePut(req: NextRequest, authContext: AuthResult) {
         (data as any)[field] = body[field];
       }
     }
-    
+
+    if (data.dailyStatsAvgDays !== undefined) {
+      const n = Math.round(Number(data.dailyStatsAvgDays));
+      data.dailyStatsAvgDays = Number.isFinite(n) ? Math.min(14, Math.max(2, n)) : 5;
+    }
+
     const settings = await prisma.settings.update({
       where: { id: existingSettings.id },
       data,

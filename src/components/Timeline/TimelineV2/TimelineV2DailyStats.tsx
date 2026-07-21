@@ -36,6 +36,7 @@ import { useTimezone } from '@/app/context/timezone';
 import { formatDateLong } from '@/src/utils/dateFormat';
 import { convertVolume } from '@/src/utils/unit-conversion';
 import { useUnit } from '@/src/hooks/useUnit';
+import { computeDayStats } from './computeDayStats';
 
 import './TimelineV2DailyStats.css';
 
@@ -98,274 +99,23 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
 
   // Calculate stats and create dynamic tiles
   const statTiles = useMemo(() => {
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
-    
-    let totalSleepMinutes = 0;
-    let wetCount = 0;
-    let dirtyCount = 0;
-    let poopCount = 0;
-    let totalFeedCount = 0;
-    const preferredUnit = defaultBottleUnit || 'OZ';
-    let bottleFeedTotal = 0;
-    let breastMilkBottleTotal = 0;
-    let formulaBottleTotal = 0;
-    let otherBottleTotal = 0;
-    let leftBreastFeedMinutes = 0;
-    let rightBreastFeedMinutes = 0;
-    const solidsAmounts: Record<string, number> = {};
-    const medicineStats: Record<string, { count: number, total: number, unit: string }> = {};
-    const supplementStats: Record<string, { count: number, total: number, unit: string }> = {};
-    let noteCount = 0;
-    let bathCount = 0;
-    let pumpCount = 0;
-    let pumpTotal = 0;
-    let milestoneCount = 0;
-    let measurementCount = 0;
-    let playCount = 0;
-    let totalPlayMinutes = 0;
-    let vaccineCount = 0;
-    let awakeMinutes = 0;
-
-    const PLAY_TYPES = ['TUMMY_TIME', 'INDOOR_PLAY', 'OUTDOOR_PLAY', 'WALK', 'CUSTOM'];
-
-    activities.forEach(activity => {
-      // Play activities - check before sleep since both have duration, startTime, type
-      if ('activities' in activity && 'type' in activity && PLAY_TYPES.includes((activity as any).type)) {
-        const time = new Date((activity as any).startTime);
-        if (time >= startOfDay && time <= endOfDay) {
-          playCount++;
-          if ((activity as any).duration) {
-            totalPlayMinutes += (activity as any).duration;
-          }
-        }
-        return; // Skip further checks for this activity
-      }
-
-      // Sleep activities (exclude pump activities which also have duration and startTime)
-      if ('duration' in activity && 'startTime' in activity &&
-          'type' in activity && // Sleep activities have type (NAP or NIGHT_SLEEP)
-          !('leftAmount' in activity || 'rightAmount' in activity)) { // Exclude pump activities
-        const startTime = new Date(activity.startTime);
-        const endTime = 'endTime' in activity && activity.endTime ? new Date(activity.endTime) : null;
-        
-        if (endTime) {
-          const overlapStart = Math.max(startTime.getTime(), startOfDay.getTime());
-          const overlapEnd = Math.min(endTime.getTime(), endOfDay.getTime());
-          
-          if (overlapEnd > overlapStart) {
-            const overlapMinutes = Math.floor((overlapEnd - overlapStart) / (1000 * 60));
-            totalSleepMinutes += overlapMinutes;
-          }
-        }
-      }
-      
-      // Feed activities - track all types together
-      if ('amount' in activity && 'type' in activity) {
-        const time = new Date(activity.time);
-        if (time >= startOfDay && time <= endOfDay) {
-          if (activity.type === 'BOTTLE') {
-            totalFeedCount++;
-            const entryUnit = activity.unitAbbr || 'OZ';
-            const amount = activity.amount || 0;
-            const converted = convertVolume(amount, entryUnit, preferredUnit);
-            bottleFeedTotal += converted;
-            // Split the measured amount into breast milk vs formula by bottle type
-            const bottleType = (activity as any).bottleType;
-            if (bottleType === 'Breast Milk') {
-              breastMilkBottleTotal += converted;
-            } else if (bottleType === 'Formula') {
-              formulaBottleTotal += converted;
-            } else if (bottleType === 'Formula\\Breast') {
-              const bmConverted = convertVolume((activity as any).breastMilkAmount || 0, entryUnit, preferredUnit);
-              breastMilkBottleTotal += bmConverted;
-              formulaBottleTotal += Math.max(0, converted - bmConverted);
-            } else {
-              // Milk, Other, or uncategorized
-              otherBottleTotal += converted;
-            }
-          } else if (activity.type === 'SOLIDS') {
-            totalFeedCount++;
-            // Track solids amounts by unit
-            const unit = activity.unitAbbr || 'g';
-            if (!solidsAmounts[unit]) {
-              solidsAmounts[unit] = 0;
-            }
-            solidsAmounts[unit] += activity.amount || 0;
-          }
-        }
-      }
-      
-      // Breast feed activities - track duration separately for left and right
-      if ('type' in activity && activity.type === 'BREAST') {
-        const time = new Date(activity.time);
-        if (time >= startOfDay && time <= endOfDay) {
-          totalFeedCount++;
-          // Track duration: prefer feedDuration (in seconds), fall back to amount (in minutes)
-          let feedMinutes = 0;
-          if ('feedDuration' in activity && activity.feedDuration) {
-            // Convert seconds to minutes
-            feedMinutes = Math.floor(activity.feedDuration / 60);
-          } else if ('amount' in activity && activity.amount) {
-            // Amount is already in minutes for older records
-            feedMinutes = activity.amount;
-          }
-          
-          // Track by side if available
-          if ('side' in activity && activity.side) {
-            if (activity.side === 'LEFT') {
-              leftBreastFeedMinutes += feedMinutes;
-            } else if (activity.side === 'RIGHT') {
-              rightBreastFeedMinutes += feedMinutes;
-            }
-          }
-          // Note: If no side specified, we don't track it separately to avoid inaccuracy
-          // The feed is still counted in totalFeedCount
-        }
-      }
-      
-      // Diaper activities
-      if ('condition' in activity && 'type' in activity) {
-        const time = new Date(activity.time);
-        if (time >= startOfDay && time <= endOfDay) {
-          // Count wet and dirty diapers exclusively
-          if (activity.type === 'WET') {
-            wetCount++;
-          } else if (activity.type === 'DIRTY') {
-            dirtyCount++;
-            poopCount++;
-          } else if (activity.type === 'BOTH') {
-            // BOTH counts as both wet and dirty
-            wetCount++;
-            dirtyCount++;
-            poopCount++;
-          }
-        }
-      }
-      
-      // Medicine and supplement activities
-      if ('doseAmount' in activity && 'medicineId' in activity) {
-        const time = new Date(activity.time);
-        if (time >= startOfDay && time <= endOfDay) {
-          // Determine if supplement
-          const isSupplement = 'medicine' in activity && activity.medicine && typeof activity.medicine === 'object' && 'isSupplement' in activity.medicine && (activity.medicine as any).isSupplement;
-          const targetStats = isSupplement ? supplementStats : medicineStats;
-
-          // Get medicine/supplement name
-          let medicineName = t('unknown');
-          if ('medicine' in activity && activity.medicine && typeof activity.medicine === 'object' && 'name' in activity.medicine) {
-            medicineName = (activity.medicine as { name?: string }).name || medicineName;
-          }
-
-          // Initialize record if it doesn't exist
-          if (!targetStats[medicineName]) {
-            targetStats[medicineName] = {
-              count: 0,
-              total: 0,
-              unit: unitSymbol(activity.unitAbbr)
-            };
-          }
-
-          // Increment count and add to total
-          targetStats[medicineName].count += 1;
-          if (activity.doseAmount && typeof activity.doseAmount === 'number') {
-            targetStats[medicineName].total += activity.doseAmount;
-          }
-        }
-      }
-      
-      // Note activities
-      if ('content' in activity) {
-        const time = new Date(activity.time);
-        if (time >= startOfDay && time <= endOfDay) {
-          noteCount++;
-        }
-      }
-      
-      // Bath activities
-      if ('soapUsed' in activity) {
-        const time = new Date(activity.time);
-        if (time >= startOfDay && time <= endOfDay) {
-          bathCount++;
-        }
-      }
-      
-      // Pump activities
-      if ('leftAmount' in activity || 'rightAmount' in activity) {
-        let time: Date | null = null;
-        if ('startTime' in activity && activity.startTime) {
-          time = new Date(activity.startTime);
-        } else if ('time' in activity && activity.time) {
-          time = new Date(activity.time);
-        }
-        if (time && time >= startOfDay && time <= endOfDay) {
-          pumpCount++;
-          const total = (activity as any).totalAmount || 0;
-          if (total > 0) {
-            const entryUnit = (activity as any).unitAbbr || 'OZ';
-            pumpTotal += convertVolume(total, entryUnit, preferredUnit);
-          }
-        }
-      }
-      
-      // Vaccine activities
-      if ('vaccineName' in activity) {
-        const time = new Date((activity as any).time);
-        if (time >= startOfDay && time <= endOfDay) {
-          vaccineCount++;
-        }
-        return;
-      }
-
-      // Milestone activities
-      if ('title' in activity && 'category' in activity) {
-        const activityDate = new Date(activity.date);
-        if (activityDate >= startOfDay && activityDate <= endOfDay) {
-          milestoneCount++;
-        }
-      }
-      
-      // Measurement activities
-      if ('value' in activity && 'unit' in activity) {
-        const activityDate = new Date(activity.date);
-        if (activityDate >= startOfDay && activityDate <= endOfDay) {
-          measurementCount++;
-        }
-      }
-    });
-
-    // Check for active sleep (sleep without endTime)
-    // Note: Must exclude pump activities which also have duration and startTime
     const now = new Date();
     const isToday = date.toDateString() === now.toDateString();
-    
-    const activeSleep = activities.find(activity => 
-      'duration' in activity && 
-      'startTime' in activity && 
-      'type' in activity && // Sleep activities have type (NAP or NIGHT_SLEEP)
-      !('leftAmount' in activity || 'rightAmount' in activity) && // Exclude pump activities
-      !('endTime' in activity && activity.endTime) &&
-      new Date(activity.startTime) >= startOfDay &&
-      new Date(activity.startTime) <= endOfDay
-    );
+    const preferredUnit = defaultBottleUnit || 'OZ';
 
-    if (activeSleep && 'startTime' in activeSleep && activeSleep.startTime) {
-      const startTime = new Date(activeSleep.startTime);
-      const endTime = isToday ? now : endOfDay;
-      const activeSleepMinutes = Math.floor((endTime.getTime() - startTime.getTime()) / (1000 * 60));
-      if (activeSleepMinutes > 0) {
-        totalSleepMinutes += activeSleepMinutes;
-      }
-    }
+    const dayStats = computeDayStats(activities, date, {
+      preferredUnit,
+      unitSymbol,
+      cutoff: isToday ? now : undefined,
+    });
 
-    // Calculate awake time (elapsed time since start of day - sleep time)
-    const referenceTime = isToday ? now : endOfDay;
-    
-    const elapsedMinutes = Math.floor((referenceTime.getTime() - startOfDay.getTime()) / (1000 * 60));
-    awakeMinutes = Math.max(0, elapsedMinutes - totalSleepMinutes);
+    const {
+      totalSleepMinutes, awakeMinutes, totalFeedCount,
+      bottleFeedTotal, breastMilkBottleTotal, formulaBottleTotal, otherBottleTotal,
+      leftBreastFeedMinutes, rightBreastFeedMinutes, solidsAmounts,
+      wetCount, poopCount, noteCount, bathCount, pumpCount, pumpTotal,
+      milestoneCount, measurementCount, playCount, totalPlayMinutes, vaccineCount,
+    } = dayStats;
 
     const tiles: StatTile[] = [];
 
@@ -501,13 +251,13 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
     }
 
     // Medicine tiles
-    const medicineEntries = Object.entries(medicineStats).filter(([_, stats]) => stats.count > 0);
+    const medicineEntries = Object.entries(dayStats.medicineStats).filter(([_, stats]) => stats.count > 0);
     if (medicineEntries.length > 0) {
       if (medicineEntries.length === 1) {
         const [medicineName, stats] = medicineEntries[0];
         tiles.push({
           filter: 'medicine',
-          label: `${medicineName}: ${stats.count}x (${stats.total} ${stats.unit})`,
+          label: `${medicineName === 'unknown' ? t('unknown') : medicineName}: ${stats.count}x (${stats.total} ${stats.unit})`,
           value: stats.count.toString(),
           icon: <PillBottle className="h-full w-full" />,
           bgColor: 'bg-gray-50',
@@ -518,7 +268,7 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
       } else {
         const totalCount = medicineEntries.reduce((sum, [_, stats]) => sum + stats.count, 0);
         const label = medicineEntries
-          .map(([name, stats]) => `${name}: ${stats.count}x (${stats.total} ${stats.unit})`)
+          .map(([name, stats]) => `${name === 'unknown' ? t('unknown') : name}: ${stats.count}x (${stats.total} ${stats.unit})`)
           .join(', ');
         tiles.push({
           filter: 'medicine',
@@ -534,13 +284,13 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
     }
 
     // Supplement tiles
-    const supplementEntries = Object.entries(supplementStats).filter(([_, stats]) => stats.count > 0);
+    const supplementEntries = Object.entries(dayStats.supplementStats).filter(([_, stats]) => stats.count > 0);
     if (supplementEntries.length > 0) {
       if (supplementEntries.length === 1) {
         const [supplementName, stats] = supplementEntries[0];
         tiles.push({
           filter: 'medicine',
-          label: `${supplementName}: ${stats.count}x (${stats.total} ${stats.unit})`,
+          label: `${supplementName === 'unknown' ? t('unknown') : supplementName}: ${stats.count}x (${stats.total} ${stats.unit})`,
           value: stats.count.toString(),
           icon: <Pill className="h-full w-full" />,
           bgColor: 'bg-gray-50',
@@ -551,7 +301,7 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
       } else {
         const totalCount = supplementEntries.reduce((sum, [_, stats]) => sum + stats.count, 0);
         const label = supplementEntries
-          .map(([name, stats]) => `${name}: ${stats.count}x (${stats.total} ${stats.unit})`)
+          .map(([name, stats]) => `${name === 'unknown' ? t('unknown') : name}: ${stats.count}x (${stats.total} ${stats.unit})`)
           .join(', ');
         tiles.push({
           filter: 'medicine',
@@ -683,7 +433,7 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
     }
 
     return tiles;
-  }, [activities, date, t]);
+  }, [activities, date, t, defaultBottleUnit, unitSymbol]);
 
   const formatDateDisplay = (date: Date): string => {
     return formatDateLong(date, dateFormat);

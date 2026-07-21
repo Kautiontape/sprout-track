@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Baby } from '@prisma/client';
 import { Edit, ExternalLink, AlertCircle, Loader2, Plus } from 'lucide-react';
@@ -91,6 +91,13 @@ export default function ConfigTab({
   const { t } = useLocalization();
   const router = useRouter();
   const { setDateTimeFormats } = useTimezone();
+
+  const [avgDaysInput, setAvgDaysInput] = useState<string>('5');
+
+  useEffect(() => {
+    const v = (settings as any)?.dailyStatsAvgDays;
+    if (v !== undefined && v !== null) setAvgDaysInput(String(v));
+  }, [(settings as any)?.dailyStatsAvgDays]);
 
   return (
     <div className="space-y-6">
@@ -320,6 +327,33 @@ export default function ConfigTab({
               onCheckedChange={(checked) => onSettingsChange({ includeSolidsInFeedTimer: checked } as any)}
             />
           </label>
+        </div>
+      </div>
+
+      {/* Daily Summary */}
+      <div className="border-t border-slate-200 pt-6">
+        <h3 className="form-label mb-4">{t('Daily Summary')}</h3>
+        <div className="space-y-4">
+          <div>
+            <Label className="form-label">{t('Running average window (days)')}</Label>
+            <Input
+              type="number"
+              min={2}
+              max={14}
+              value={avgDaysInput}
+              onChange={(e) => setAvgDaysInput(e.target.value)}
+              onBlur={() => {
+                const parsed = Math.round(Number(avgDaysInput));
+                const clamped = Number.isFinite(parsed) ? Math.min(14, Math.max(2, parsed)) : 5;
+                setAvgDaysInput(String(clamped));
+                if (clamped !== (settings as any)?.dailyStatsAvgDays) {
+                  onSettingsChange({ dailyStatsAvgDays: clamped } as any);
+                }
+              }}
+              className="w-24"
+            />
+            <p className="text-sm text-gray-500 mt-1">{t('How many previous days are averaged for the Daily Summary comparison')}</p>
+          </div>
         </div>
       </div>
 

@@ -41,13 +41,13 @@ function bucketByDate(activities: ActivityType[]): Map<string, ActivityType[]> {
   return buckets;
 }
 
-function buildDateRange(centerDate: Date, radius: number): { startDate: Date; endDate: Date; dateKeys: string[] } {
+function buildDateRange(centerDate: Date, before: number, after: number): { startDate: Date; endDate: Date; dateKeys: string[] } {
   const startDate = new Date(centerDate);
-  startDate.setDate(startDate.getDate() - radius);
+  startDate.setDate(startDate.getDate() - before);
   startDate.setHours(0, 0, 0, 0);
 
   const endDate = new Date(centerDate);
-  endDate.setDate(endDate.getDate() + radius);
+  endDate.setDate(endDate.getDate() + after);
   endDate.setHours(23, 59, 59, 999);
 
   const dateKeys: string[] = [];
@@ -120,7 +120,7 @@ export function useActivityCache() {
   const fetchWindow = useCallback(async (
     babyId: string,
     centerDate: Date,
-    radius: number = 1
+    window: { before: number; after: number } = { before: 1, after: 1 }
   ): Promise<FetchResult> => {
     // Cancel any in-flight request
     if (abortRef.current) {
@@ -129,7 +129,7 @@ export function useActivityCache() {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const { startDate, endDate, dateKeys } = buildDateRange(centerDate, radius);
+    const { startDate, endDate, dateKeys } = buildDateRange(centerDate, window.before, window.after);
 
     // Check which dates we actually need to fetch
     const uncachedKeys = dateKeys.filter(key => !isCached(key));
@@ -137,10 +137,21 @@ export function useActivityCache() {
     // If everything is cached, return from cache
     if (uncachedKeys.length === 0) {
       const centerKey = toDateKey(centerDate);
+      // Dedupe by id: bucketByDate stores overnight sleeps in both their start- and
+      // end-date buckets, and adjacent days may hold copies from different fetches
+      const seenIds = new Set<string>();
       const allActivities: ActivityType[] = [];
       for (const key of dateKeys) {
         const cached = getActivitiesForDate(key);
-        if (cached) allActivities.push(...cached);
+        if (!cached) continue;
+        for (const activity of cached) {
+          const id = (activity as any).id;
+          if (id !== undefined) {
+            if (seenIds.has(id)) continue;
+            seenIds.add(id);
+          }
+          allActivities.push(activity);
+        }
       }
       return {
         activities: getActivitiesForDate(centerKey) || [],

@@ -30,6 +30,7 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
 
   const [dateFilteredActivities, setDateFilteredActivities] = useState<ActivityType[]>([]);
   const [heatmapActivities, setHeatmapActivities] = useState<ActivityType[]>([]);
+  const [windowActivities, setWindowActivities] = useState<ActivityType[]>([]);
 
   const [isLoadingActivities, setIsLoadingActivities] = useState<boolean>(false);
   const [isFetchAnimated, setIsFetchAnimated] = useState<boolean>(true);
@@ -41,6 +42,7 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
   const activityCache = useActivityCache();
 
   const breastMilkTrackingEnabled = (settings as any)?.enableBreastMilkTracking ?? true;
+  const avgDays = Math.min(14, Math.max(2, Number((settings as any)?.dailyStatsAvgDays ?? 5)));
 
   // Extract latest status data from activities and notify parent
   const emitLatestStatus = useCallback((activities: ActivityType[]) => {
@@ -141,8 +143,11 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
     }
 
     try {
-      const result = await activityCache.fetchWindow(babyId, date, 1);
+      // before: avgDays + 1 so the oldest baseline day still sees overnight sleep
+      // that started the previous evening
+      const result = await activityCache.fetchWindow(babyId, date, { before: avgDays + 1, after: 1 });
       setDateFilteredActivities(result.activities);
+      setWindowActivities(result.allActivities);
       lastRefreshTimestamp.current = Date.now();
 
       // Only emit status when today is within the fetched window (prevents stale status on past dates)
@@ -154,7 +159,14 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
         || todayKey === activityCache.toDateKey(dayAfter);
 
       if (windowIncludesToday) {
-        emitLatestStatus(result.allActivities);
+        // Status detection predates the widened averages window — keep feeding it
+        // the original ±1-day slice so stale unclosed records age out as before
+        const statusWindowStart = new Date(date);
+        statusWindowStart.setDate(statusWindowStart.getDate() - 1);
+        statusWindowStart.setHours(0, 0, 0, 0);
+        emitLatestStatus(result.allActivities.filter(
+          (a) => new Date(getActivityTime(a)) >= statusWindowStart
+        ));
       }
     } catch (error) {
       console.error('Error fetching activities for date:', error);
@@ -164,7 +176,7 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
         setIsLoadingActivities(false);
       }
     }
-  }, [babyId, activityCache, emitLatestStatus]);
+  }, [babyId, activityCache, emitLatestStatus, avgDays]);
 
   // Refresh just today's data (for polling — bypasses cache)
   const refreshCurrentDay = useCallback(async () => {
@@ -262,7 +274,7 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
       activityCache.invalidateAll();
       fetchActivitiesForDate(selectedDate, true);
     }
-  }, [babyId]);
+  }, [babyId, avgDays]);
 
   // Fetch breast milk balance
   useEffect(() => {
@@ -412,6 +424,8 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
       {/* Daily Stats with Integrated Date Navigation */}
       <TimelineV2DailyStats
         activities={dateFilteredActivities}
+        windowActivities={windowActivities}
+        avgDays={avgDays}
         heatmapActivities={heatmapActivities}
         date={selectedDate}
         isLoading={isLoadingActivities}

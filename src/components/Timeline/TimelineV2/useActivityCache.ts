@@ -137,10 +137,21 @@ export function useActivityCache() {
     // If everything is cached, return from cache
     if (uncachedKeys.length === 0) {
       const centerKey = toDateKey(centerDate);
+      // Dedupe by id: bucketByDate stores overnight sleeps in both their start- and
+      // end-date buckets, and adjacent days may hold copies from different fetches
+      const seenIds = new Set<string>();
       const allActivities: ActivityType[] = [];
       for (const key of dateKeys) {
         const cached = getActivitiesForDate(key);
-        if (cached) allActivities.push(...cached);
+        if (!cached) continue;
+        for (const activity of cached) {
+          const id = (activity as any).id;
+          if (id !== undefined) {
+            if (seenIds.has(id)) continue;
+            seenIds.add(id);
+          }
+          allActivities.push(activity);
+        }
       }
       return {
         activities: getActivitiesForDate(centerKey) || [],

@@ -159,7 +159,14 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
         || todayKey === activityCache.toDateKey(dayAfter);
 
       if (windowIncludesToday) {
-        emitLatestStatus(result.allActivities);
+        // Status detection predates the widened averages window — keep feeding it
+        // the original ±1-day slice so stale unclosed records age out as before
+        const statusWindowStart = new Date(date);
+        statusWindowStart.setDate(statusWindowStart.getDate() - 1);
+        statusWindowStart.setHours(0, 0, 0, 0);
+        emitLatestStatus(result.allActivities.filter(
+          (a) => new Date(getActivityTime(a)) >= statusWindowStart
+        ));
       }
     } catch (error) {
       console.error('Error fetching activities for date:', error);

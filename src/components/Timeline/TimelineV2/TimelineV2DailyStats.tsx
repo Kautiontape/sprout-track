@@ -41,6 +41,10 @@ import './TimelineV2DailyStats.css';
 
 interface TimelineV2DailyStatsProps {
   activities: ActivityType[];
+  /** All activities for the fetched window (avgDays+1 back through +1 forward) — baseline for averages */
+  windowActivities: ActivityType[];
+  /** Running-average window length from family settings (clamped 2-14) */
+  avgDays: number;
   heatmapActivities: ActivityType[];
   date: Date;
   isLoading?: boolean;
@@ -69,7 +73,9 @@ interface StatTile {
 }
 
 const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
-  activities, 
+  activities,
+  windowActivities,
+  avgDays,
   heatmapActivities,
   date, 
   isLoading = false,

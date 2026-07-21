@@ -725,6 +725,26 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
                         {tile.avg && (
                           <div className="flex items-center gap-1 text-[10px] text-gray-400 font-medium leading-tight">
                             <span>{tile.avg}</span>
+                            {tile.pace && (
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="flex-shrink-0 text-gray-400 hover:opacity-70 transition-opacity"
+                                    aria-label={t('Pace details')}
+                                  >
+                                    <Info className="h-3 w-3" />
+                                  </button>
+                                </PopoverTrigger>
+                                <PopoverContent align="start" className="w-auto p-2">
+                                  <div className="flex flex-col gap-1 text-xs">
+                                    <span className="text-gray-500">{tile.pace.usuallyText}</span>
+                                    <span className="font-semibold text-gray-800">{tile.pace.statusLabel}</span>
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            )}
                           </div>
                         )}
                       </div>

@@ -78,6 +78,7 @@ interface StatTile {
 
 interface CoreAverages {
   sleepMinutes: number;
+  napCount: number;
   feedCount: number;
   bottleVolume: number;
   wetCount: number;
@@ -114,6 +115,13 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
     return `${hours}h ${mins}${t('min')}`;
   };
 
+  // Compact H:MM form for dense secondary lines, e.g. "16:09"
+  const formatMinutesCompact = (minutes: number): string => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours}:${String(mins).padStart(2, '0')}`;
+  };
+
   // Baseline averages over the avgDays days preceding the viewed day.
   // Depends on `activities` (not just windowActivities) so the 30s polling
   // re-truncates today's expected-by-now with a fresh "now".
@@ -145,6 +153,7 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
         list.reduce((sum, s) => sum + pick(s), 0) / list.length;
       return {
         sleepMinutes: mean(s => s.totalSleepMinutes),
+        napCount: mean(s => s.napCount),
         feedCount: mean(s => s.totalFeedCount),
         bottleVolume: mean(s => s.bottleFeedTotal),
         wetCount: mean(s => s.wetCount),
@@ -185,12 +194,16 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
     const buildPace = (
       actual: number,
       expected: number | undefined,
-      fmt: (n: number) => string
+      fmt: (n: number) => string,
+      isCount = false
     ): StatTile['pace'] => {
       if (!averages?.expectedByNow || expected === undefined) return undefined;
       let status: 'ahead' | 'behind' | 'on-pace';
       if (expected <= 0) {
         status = actual > 0 ? 'ahead' : 'on-pace';
+      } else if (isCount) {
+        // Small counts round ambiguously; treat [floor, ceil] of expected as on pace
+        status = actual < Math.floor(expected) ? 'behind' : actual > Math.ceil(expected) ? 'ahead' : 'on-pace';
       } else if (actual >= expected * 1.1) {
         status = 'ahead';
       } else if (actual <= expected * 0.9) {
@@ -232,7 +245,9 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
         iconColor: 'text-[#9ca3af]', // gray-400 - matches timeline
         borderColor: 'border-gray-500',
         bgActiveColor: 'bg-gray-100',
-        avg: sleepAvg !== null ? `${t('avg')} ${formatMinutes(Math.round(sleepAvg))}` : undefined,
+        avg: sleepAvg !== null
+          ? `${t('avg')} ${round1(averages!.full.napCount) > 0 ? `${round1(averages!.full.napCount)} · ` : ''}${formatMinutesCompact(Math.round(sleepAvg))}`
+          : undefined,
         pace: buildPace(totalSleepMinutes, averages?.expectedByNow?.sleepMinutes, (n) => formatMinutes(Math.round(n))),
       });
     }
@@ -312,7 +327,9 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
         avg: feedAvg !== null
           ? `${t('avg')} ${round1(feedAvg)}${averages!.full.bottleVolume > 0 ? ` · ${roundAmount(averages!.full.bottleVolume)} ${preferredUnit.toLowerCase()}` : ''}`
           : undefined,
-        pace: buildPace(totalFeedCount, averages?.expectedByNow?.feedCount, (n) => String(round1(n))),
+        pace: averages && averages.full.bottleVolume > 0
+          ? buildPace(bottleFeedTotal, averages?.expectedByNow?.bottleVolume, (n) => `${roundAmount(n)} ${preferredUnit.toLowerCase()}`)
+          : buildPace(totalFeedCount, averages?.expectedByNow?.feedCount, (n) => String(round1(n)), true),
       });
     }
 
@@ -329,7 +346,7 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
         borderColor: 'border-gray-500',
         bgActiveColor: 'bg-gray-100',
         avg: wetAvg !== null ? `${t('avg')} ${round1(wetAvg)}` : undefined,
-        pace: buildPace(wetCount, averages?.expectedByNow?.wetCount, (n) => String(round1(n))),
+        pace: buildPace(wetCount, averages?.expectedByNow?.wetCount, (n) => String(round1(n)), true),
       });
     }
 
@@ -346,7 +363,7 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
         borderColor: 'border-gray-500',
         bgActiveColor: 'bg-gray-100',
         avg: poopAvg !== null ? `${t('avg')} ${round1(poopAvg)}` : undefined,
-        pace: buildPace(poopCount, averages?.expectedByNow?.poopCount, (n) => String(round1(n))),
+        pace: buildPace(poopCount, averages?.expectedByNow?.poopCount, (n) => String(round1(n)), true),
       });
     }
 

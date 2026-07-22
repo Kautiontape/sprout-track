@@ -18,6 +18,7 @@ export interface MedicineStat {
 
 export interface DayStats {
   totalSleepMinutes: number;
+  napCount: number;
   awakeMinutes: number;
   totalFeedCount: number;
   bottleFeedTotal: number;
@@ -62,6 +63,7 @@ export function computeDayStats(
 
   const stats: DayStats = {
     totalSleepMinutes: 0,
+    napCount: 0,
     awakeMinutes: 0,
     totalFeedCount: 0,
     bottleFeedTotal: 0,
@@ -108,6 +110,12 @@ export function computeDayStats(
         !('leftAmount' in activity || 'rightAmount' in activity)) { // Exclude pump activities
       const startTime = new Date(activity.startTime);
       const endTime = 'endTime' in activity && activity.endTime ? new Date(activity.endTime) : null;
+
+      // Count naps by the day they start (mirrors the Reports nap-per-day convention)
+      if ((activity as any).type === 'NAP' && startTime >= startOfDay && startTime <= endBound) {
+        stats.hasAnyActivity = true;
+        stats.napCount++;
+      }
 
       if (endTime) {
         const overlapStart = Math.max(startTime.getTime(), startOfDay.getTime());

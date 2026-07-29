@@ -29,7 +29,7 @@ export function ActivityTileIcon({
       )}>
         <Toilet className={cn(
           'activity-tile-icon-potty',
-          isButton ? 'h-16 w-16' : styles.icon.base,
+          styles.icon.base,
           styles.icon.variants.potty
         )} />
       </div>

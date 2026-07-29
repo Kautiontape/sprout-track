@@ -853,7 +853,7 @@ Then add `activity-tile-icon-potty` to the `className` in the block from Step 5,
 ```typescript
         <Toilet className={cn(
           'activity-tile-icon-potty',
-          isButton ? 'h-16 w-16' : styles.icon.base,
+          styles.icon.base,
           styles.icon.variants.potty
         )} />
 ```
@@ -1418,6 +1418,8 @@ The details panel shows time, type, receptacle, and notes:
 ```
 
 Render `pottyTypeLabel(activity.type)`, `t(activity.pottyLocation)` when present, and `activity.notes` when present. Every label goes through `t()`; the receptacle value is itself a translation key (see Task 16).
+
+**Also check `useActivityDescription().getActivityDescription`** in `src/components/ui/activity-tile/activity-tile-utils.ts`. It has no `pottyLocation` branch, so a potty activity rendered through `ActivityTileContent` (i.e. `ActivityTile` with `isButton={false}`) falls through to a generic `{ type: 'Activity', details: 'logged' }`. That path is currently unreachable — `ActivityTileGroup` always passes `isButton={true}` — but if this task gives `ActivityTile` a non-button consumer, add a potty branch there mirroring the diaper one. Flagged in Task 7's code review.
 
 - [ ] **Step 7: Make the diaper status bubble elimination-aware** (relocated from Task 6)
 

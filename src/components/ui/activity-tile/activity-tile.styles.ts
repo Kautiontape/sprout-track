@@ -53,7 +53,7 @@ export const activityTileStyles = {
       sleep: "text-gray-700",
       feed: "text-blue-600",
       diaper: "text-teal-600",
-      potty: "text-sky-600",
+      potty: "text-fuchsia-600",
       note: "text-yellow-600",
       bath: "text-orange-600",
       pump: "text-purple-600",

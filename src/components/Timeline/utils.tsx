@@ -1104,7 +1104,10 @@ export const getActivityStyle = (activity: ActivityType): ActivityStyle => {
     }
     if ('pottyLocation' in activity) {
       return {
-        bg: 'bg-gradient-to-r from-sky-500 to-sky-600',
+        // Fuchsia deliberately: potty must be unmistakable against diaper (teal)
+        // — the one pair users need to tell apart at a glance — and against
+        // feed (sky), which an earlier sky choice sat right next to.
+        bg: 'bg-gradient-to-r from-fuchsia-500 to-fuchsia-600',
         textColor: 'text-white',
       };
     }

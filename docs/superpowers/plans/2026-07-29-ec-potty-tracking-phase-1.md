@@ -817,7 +817,7 @@ In `activity-tile.styles.ts`, the object is `as const`, so a missing key is a Ty
 // in iconContainer.variants:
       potty: "",
 // in icon.variants:
-      potty: "text-sky-600",
+      potty: "text-fuchsia-600",
 ```
 
 Do **not** add `potty` to `icon.defaultIcons` — there is no `/public/potty-128.png`, and an entry there would render a broken image. The next step handles the icon explicitly instead.
@@ -858,7 +858,7 @@ In `src/components/ui/activity-tile/activity-tile.css`, following the pattern al
 
 ```css
 html.dark .activity-tile-icon-potty {
-  color: rgb(125 211 252);
+  color: rgb(240 171 252);
 }
 ```
 
@@ -1622,7 +1622,7 @@ Expected: PASS, no failures.
 In `src/components/DailyStats/index.tsx`, the stat rows are built around lines 491–492 and 564–573, conditional on the value not being `'0'`. Add a Potty row after Poops, importing `Toilet` from `lucide-react`:
 
 ```typescript
-              ...(pottyCount !== '0' ? [{ icon: <Toilet className="h-3 w-3 text-sky-600" />, label: "Potty", value: pottyCount }] : []),
+              ...(pottyCount !== '0' ? [{ icon: <Toilet className="h-3 w-3 text-fuchsia-600" />, label: "Potty", value: pottyCount }] : []),
 ```
 
 Add the matching entry in the expanded section (around line 573) following the pattern of the adjacent Diapers/Poops blocks, and compute `pottyCount` alongside `diaperCount` in the counting loop around line 268 using the same `'pottyLocation' in activity` discriminator.

@@ -26,6 +26,20 @@ Read these before starting. They are the patterns every task below copies.
 - **There is no test runner.** Pure functions get `node:test` files run with `npx tsx --test <file>`; some logic has standalone assertion scripts run with `npx tsx scripts/verify-*.ts`. React components are not unit-testable here and are verified by running the app.
 - **Commit style is `topic: message`** (e.g. `potty: Add PottyLog model`). Never add `Co-Authored-By` lines.
 
+**READ THIS FIRST: `documentation/Implementation/add-new-activity.md`.**
+
+The repo contains a 450-line guide for adding an activity type, including a
+**29-file checklist** (line 260) and a dark-mode section (line 300). It was written for
+exactly this kind of change and is authoritative. This plan was drafted before it was
+found, and cross-checking revealed genuine gaps — several are corrected below, but if
+the checklist and this plan ever disagree, **the checklist wins**. Work through it as
+you go and report anything this plan misses.
+
+Known gaps this correction already covers: `Timeline/utils.tsx` needs all five
+activity-dispatching functions (not just the endpoint one), three CSS files need potty
+dark-mode rules, `Timeline/index.tsx` (the older container) was omitted entirely, and
+`PottyForm` needs a `.css` file.
+
 **Two duck-typing discriminators you will trip over.** The codebase identifies activity types by which fields are present, in two places:
 1. `getActivityVariant()` in `src/components/ui/activity-tile/activity-tile-utils.ts` — activity → tile variant.
 2. `src/components/Timeline/utils.tsx:1016` — activity → API endpoint name.
@@ -1406,6 +1420,43 @@ Change it to:
 
 This string is what `shouldFetch(...)` in the timeline route (Task 10, Step 2) tests against, so the two must agree — if potty entries are missing from the timeline, check this line first.
 
+- [ ] **Step 5b: Cover ALL FIVE activity-dispatching functions in `Timeline/utils.tsx`**
+
+> **Plan correction.** Task 7 added `potty` to `getActivityEndpoint` only. The
+> checklist doc (`documentation/Implementation/add-new-activity.md`, row 15) says
+> "Add to all 5 utility functions." `grep -c "potty" src/components/Timeline/utils.tsx`
+> currently returns 1 — it must end up covering every dispatcher below.
+
+The activity-dispatching exports in that file are:
+
+| Line (approx) | Function | What to add |
+|---|---|---|
+| 64 | `getActivityIcon` | A potty branch returning the `Toilet` icon |
+| 191 | `getActivityDetails` | Type (Pee/Poop/Both), receptacle, notes |
+| 647 | `getActivityDescription` | A short human summary line |
+| 1007 | `getActivityEndpoint` | ✅ already done in Task 7 — `'potty-log'` |
+| 1031 | `getActivityStyle` | Colors/classes for the timeline entry |
+
+`getActivityTime` (line 132) is generic (`'time' in activity`) and needs nothing.
+
+For each, mirror the existing **diaper** branch and place the potty check **above** it — both carry `type`, and a `PottyLog` has no `condition`, so `'pottyLocation' in activity` must be tested first. Use `t()` for every label.
+
+Verify with `grep -c "potty" src/components/Timeline/utils.tsx` — expect at least 5.
+
+- [ ] **Step 5c: Add potty to the older `Timeline/index.tsx` container**
+
+The checklist's row 21 lists `src/components/Timeline/index.tsx` alongside `TimelineV2/index.tsx`. This plan originally omitted it. Add the same filter/form/type wiring you did for TimelineV2, mirroring its diaper handling. If the file turns out to be dead or no longer rendered, say so in your report rather than editing it speculatively.
+
+- [ ] **Step 5d: Dark-mode CSS**
+
+Per the checklist rows 16 and 19 and the doc's "Adding Dark Mode for a New Activity" section (line 391), add potty rules mirroring diaper's in:
+- `src/components/Timeline/timeline-activity-list.css`
+- `src/components/Timeline/TimelineV2/TimelineV2DailyStats.css` (needed by Task 12's stat tile)
+
+Use `html.dark` selectors. NEVER Tailwind `dark:` classes.
+
+Also create `src/components/forms/PottyForm/potty-form.css` (checklist row 12) if `PottyForm` needs any dark-mode overrides, and import it from the component. If it genuinely needs none because it only uses already-themed primitives, say so explicitly rather than creating an empty file.
+
 - [ ] **Step 6: Render list entries and details**
 
 In `TimelineActivityList.tsx` and `TimelineActivityDetails.tsx`, locate the diaper branches (search for `'condition' in`) and add a potty branch **above** each, keyed on `'pottyLocation' in activity`. Ordering matters for the same reason it does everywhere else: both types carry `type`.
@@ -2111,13 +2162,21 @@ git commit -m "potty: Add potty translation keys"
 
 ## Task 17: Full verification
 
-- [ ] **Step 1: Typecheck and lint**
+- [ ] **Step 1: Typecheck**
 
 ```bash
-npx tsc --noEmit && npm run lint
+npx tsc --noEmit
 ```
 
-Expected: both clean.
+Expected: clean (0 errors).
+
+> **`npm run lint` does not work in this repo — do not use it as a gate.** The script is
+> `next lint`, but the project is on Next.js 16, which removed that subcommand and now
+> reads `lint` as a directory argument, failing with
+> `Invalid project directory provided, no such directory: <repo>/lint`. There is also no
+> `.eslintrc*` or `eslint.config.*` anywhere in the repo, so there is nothing to run
+> standalone. This is pre-existing and unrelated to potty tracking. `tsc --noEmit` plus
+> `next build` in Step 3 are the real gates. Fixing the lint setup is separate cleanup.
 
 - [ ] **Step 2: Run every test**
 

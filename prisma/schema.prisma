@@ -178,6 +178,7 @@ model Family {
   sleepLogs      SleepLog[]
   feedLogs       FeedLog[]
   diaperLogs     DiaperLog[]
+  pottyLogs      PottyLog[]
   moodLogs       MoodLog[]
   notes          Note[]
   milestones     Milestone[]
@@ -236,6 +237,7 @@ model Baby {
   sleepLogs    SleepLog[]
   feedLogs     FeedLog[]
   diaperLogs   DiaperLog[]
+  pottyLogs    PottyLog[]
   moodLogs     MoodLog[]
   notes        Note[]
   milestones   Milestone[]
@@ -283,6 +285,7 @@ model Caretaker {
   sleepLogs     SleepLog[]
   feedLogs      FeedLog[]
   diaperLogs    DiaperLog[]
+  pottyLogs     PottyLog[]
   moodLogs      MoodLog[]
   notes         Note[]
   milestones    Milestone[]
@@ -421,6 +424,33 @@ model DiaperLog {
   @@index([familyId])
 }
 
+model PottyLog {
+  id            String     @id @default(uuid())
+  time          DateTime
+  type          DiaperType // WET | DIRTY | BOTH — labeled Pee / Poop / Both in potty UI
+  pottyLocation String?    // 'Potty Chair' | 'Toilet' | 'Sink' | 'Tub' | 'Outside' | 'Other'
+  notes         String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  deletedAt     DateTime?
+
+  // Add family relation
+  family   Family? @relation(fields: [familyId], references: [id])
+  familyId String? // Nullable initially for migration
+
+  // Relationships
+  baby        Baby       @relation(fields: [babyId], references: [id], onDelete: Cascade)
+  babyId      String
+  caretaker   Caretaker? @relation(fields: [caretakerId], references: [id])
+  caretakerId String?
+
+  @@index([time])
+  @@index([babyId])
+  @@index([caretakerId])
+  @@index([deletedAt])
+  @@index([familyId])
+}
+
 model MoodLog {
   id        String    @id @default(uuid())
   time      DateTime
@@ -486,6 +516,7 @@ model Settings {
   defaultTempUnit     String   @default("F") // Default unit for temperature
   activitySettings    String? // JSON string for activity order and visibility settings
   sleepLocationSettings String? // JSON string for hidden sleep locations
+  pottyLocationSettings String? // JSON string for hidden potty locations
   nurseryModeSettings String? // JSON string for nursery mode settings per caretaker
   hueConfig           String? // JSON string for Philips Hue integration (bridge IP, app key, button scenes)
   enableDebugTimer    Boolean  @default(false) // Enable debug session timer

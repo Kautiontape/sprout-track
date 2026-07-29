@@ -24,7 +24,7 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
   const [settings, setSettings] = useState<Settings | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<ActivityType | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterType>(null);
-  const [editModalType, setEditModalType] = useState<'sleep' | 'feed' | 'diaper' | 'medicine' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'play' | 'vaccine' | null>(null);
+  const [editModalType, setEditModalType] = useState<'sleep' | 'feed' | 'diaper' | 'potty' | 'medicine' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'play' | 'vaccine' | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [isHeatmapVisible, setIsHeatmapVisible] = useState<boolean>(false);
 
@@ -414,7 +414,7 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
     }
   };
 
-  const handleEdit = (activity: ActivityType, type: 'sleep' | 'feed' | 'diaper' | 'medicine' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'play' | 'vaccine') => {
+  const handleEdit = (activity: ActivityType, type: 'sleep' | 'feed' | 'diaper' | 'potty' | 'medicine' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'play' | 'vaccine') => {
     setSelectedActivity(activity);
     setEditModalType(type);
   };

@@ -11,7 +11,7 @@ export type TimelineActivityType = ImportedActivityType & {
 // Use TimelineActivityType for internal component logic
 export type ActivityType = TimelineActivityType;
 
-export type FilterType = 'sleep' | 'feed' | 'diaper' | 'poop' | 'medicine' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'play' | 'vaccine' | null;
+export type FilterType = 'sleep' | 'feed' | 'diaper' | 'potty' | 'poop' | 'medicine' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'play' | 'vaccine' | null;
 
 export interface LatestStatusData {
   lastFeedTime?: Date;
@@ -65,7 +65,7 @@ export interface TimelineActivityDetailsProps {
   isOpen: boolean;
   onClose: () => void;
   onDelete: (activity: ActivityType) => void;
-  onEdit: (activity: ActivityType, type: 'sleep' | 'feed' | 'diaper' | 'medicine' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'play' | 'vaccine') => void;
+  onEdit: (activity: ActivityType, type: 'sleep' | 'feed' | 'diaper' | 'potty' | 'medicine' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'play' | 'vaccine') => void;
 }
 
 export interface ActivityDetail {

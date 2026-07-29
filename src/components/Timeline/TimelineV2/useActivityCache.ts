@@ -242,7 +242,7 @@ export function useActivityCache() {
     }
 
     try {
-      const activities = await fetchFromApi(babyId, startOfWindow, endOfWindow, undefined, 'sleep,feed,diaper,pump');
+      const activities = await fetchFromApi(babyId, startOfWindow, endOfWindow, undefined, 'sleep,feed,diaper,potty,pump');
       heatmapCache.current = {
         activities,
         fetchedAt: Date.now(),

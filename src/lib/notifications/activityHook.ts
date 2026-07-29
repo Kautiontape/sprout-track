@@ -15,6 +15,8 @@ const ACTIVITY_TYPE_MAP: Record<string, string> = {
   FEED: 'feed',
   diaper: 'diaper',
   DIAPER: 'diaper',
+  potty: 'potty',
+  POTTY: 'potty',
   sleep: 'sleep',
   SLEEP: 'sleep',
   bath: 'bath',
@@ -120,6 +122,17 @@ function buildNotificationBody(
         });
       }
       return t('notification.diaper.generic.body', userLanguage, {
+        babyName, byActor,
+      });
+    }
+    case 'potty': {
+      const pottyType = activityData?.type;
+      if (pottyType && ['WET', 'DIRTY', 'BOTH'].includes(pottyType)) {
+        return t(`notification.potty.${pottyType.toLowerCase()}.body`, userLanguage, {
+          babyName, byActor,
+        });
+      }
+      return t('notification.potty.generic.body', userLanguage, {
         babyName, byActor,
       });
     }

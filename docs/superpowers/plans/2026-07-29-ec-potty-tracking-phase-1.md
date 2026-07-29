@@ -1988,6 +1988,13 @@ git commit -m "potty: Include potty logs in exports, backups, and hooks API"
 **Files:**
 - Modify: `src/localization/translations/en.json`
 
+> **Note:** the push-notification key `notification.activityType.potty` is NOT in the
+> list below and is handled in Task 3 instead. The `notification.*` keys are a
+> separate namespaced block in `en.json`, not plain-English UI keys, and
+> `src/lib/notifications/i18n.ts` falls back to rendering the raw key when one is
+> missing — so omitting it produces a push title reading literally
+> "notification.activityType.potty logged for <baby>". Found in code review of Task 3.
+
 - [ ] **Step 1: Add the English keys**
 
 Keys are the English text verbatim. Add only to `en.json` — the script propagates the rest. New strings introduced across this plan:

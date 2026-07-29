@@ -707,24 +707,32 @@ Add `lastPotty` to the destructuring array in the same position, then add to the
 
 Match the exact `where` clause shape used by the existing `lastDiaper` query in this file — if it omits `deletedAt: null`, omit it here too, so the two stay consistent.
 
-- [ ] **Step 2: Feed the bubble the later of the two**
+- [ ] **Step 2: (moved to Task 10) — do not edit the log-entry page here**
 
-In `app/(app)/[slug]/log-entry/page.tsx`, find where `lastDiaperTime` is populated from the `baby-last-activities` response and passed to `ActivityTileGroup`. Import the helper:
+> **Plan correction, found during execution.** An earlier draft of this step said
+> `app/(app)/[slug]/log-entry/page.tsx` populates `lastDiaperTime` from the
+> `baby-last-activities` response. **It does not.** Commit `ca29eb8` ("refactor to
+> reduce timeline calls in log entry") moved that page off direct
+> `baby-last-activities` fetches. Verified: `grep -n "baby-last-activities"` on
+> that page returns nothing.
+>
+> The real path is: `TimelineV2` computes status in `emitLatestStatus()`
+> (`src/components/Timeline/TimelineV2/index.tsx:48`), deriving `lastDiaperTime` at
+> line 76 by filtering `'condition' in a`, and hands it to the page via the
+> `onLatestStatusReady` callback (page.tsx:399-406).
+>
+> So the bubble wiring belongs in `emitLatestStatus`, and it is **inert until Task 10**
+> puts `PottyLog` rows into `/api/timeline`. Doing it here would require inventing a
+> parallel fetch that races TimelineV2's own refresh cycle and gets silently
+> overwritten on every activity save. The step now lives in **Task 10, Step 7**.
+>
+> Task 6 is therefore API-surface only: Step 1 alone.
 
-```typescript
-import { latestElimination } from '@/src/lib/elimination';
-```
-
-Then set the value from both timestamps instead of the diaper one alone:
-
-```typescript
-const elimination = latestElimination(data.lastDiaper?.time, data.lastPotty?.time);
-if (elimination) {
-  newLastDiaperTime[babyId] = elimination.time;
-}
-```
-
-Preserve the surrounding code's existing shape — this file builds `Record<string, Date>` maps keyed by baby ID, so match whatever accumulator variable is already in scope rather than inventing a new one.
+Note on `lastPotty`: nothing in Phase 1 consumes it yet. It is added because the
+endpoint already returns a fine-grained set (`lastDiaper`, `lastPoopDiaper`,
+`lastBath`, `lastNote`), `BabyQuickInfo` is its only consumer and the natural home
+for a "last potty" display, and the parallel keeps the endpoint coherent. If you
+prefer strict YAGNI, this is the one line in Phase 1 safe to drop.
 
 - [ ] **Step 3: Verify it compiles**
 
@@ -1411,7 +1419,37 @@ The details panel shows time, type, receptacle, and notes:
 
 Render `pottyTypeLabel(activity.type)`, `t(activity.pottyLocation)` when present, and `activity.notes` when present. Every label goes through `t()`; the receptacle value is itself a translation key (see Task 16).
 
-- [ ] **Step 7: Verify by hand**
+- [ ] **Step 7: Make the diaper status bubble elimination-aware** (relocated from Task 6)
+
+This is the step Task 6 could not do, because the status bubble is fed by `TimelineV2`, not by `baby-last-activities`. It only works once Step 2 above has put `PottyLog` rows into the timeline feed — so it must come after, not before.
+
+In `src/components/Timeline/TimelineV2/index.tsx`, `emitLatestStatus()` (around line 48) currently derives the diaper time by filtering for `'condition' in a` (line 72) and assigning at line 76. Replace that assignment so a potty catch also resets the bubble:
+
+```typescript
+import { latestElimination } from '@/src/lib/elimination';
+```
+
+```typescript
+const lastPottyEntry = activities
+  .filter((a) => 'pottyLocation' in a && 'time' in a)
+  .sort((a, b) => new Date((b as any).time).getTime() - new Date((a as any).time).getTime())[0];
+
+const elimination = latestElimination(
+  lastDiaper ? (lastDiaper as any).time : null,
+  lastPottyEntry ? (lastPottyEntry as any).time : null
+);
+if (elimination) {
+  status.lastDiaperTime = elimination.time;
+}
+```
+
+Use the existing `latestElimination` helper — do NOT re-derive max-of-two inline. It is tested (11 cases) and handles nulls, invalid dates, and epoch-0.
+
+The `as any` duck-typing matches this file's existing style. Note `'pottyLocation' in a` is the same discriminator used everywhere else, and it must be checked independently of `'condition' in a` — a `PottyLog` has neither `condition` nor `duration`.
+
+**This changes only the bubble's input. It must not touch any diaper count.** `wetCount`, `dirtyCount`, and `poopCount` all stay diaper-only.
+
+- [ ] **Step 8: Verify by hand**
 
 Run `npm run dev`. Expected:
 - Potty catches appear in the timeline with a toilet icon.
@@ -1419,7 +1457,7 @@ Run `npm run dev`. Expected:
 - Tapping an entry opens details showing the receptacle.
 - Editing an entry opens `PottyForm` pre-populated, and saving persists.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add src/components/Timeline app/api/timeline/route.ts

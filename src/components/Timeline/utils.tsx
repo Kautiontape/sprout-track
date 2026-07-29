@@ -1013,6 +1013,7 @@ export const getActivityEndpoint = (activity: ActivityType): string => {
   if ('leftAmount' in activity || 'rightAmount' in activity) return 'pump-log';
   if ('duration' in activity) return 'sleep-log';
   if ('amount' in activity) return 'feed-log';
+  if ('pottyLocation' in activity) return 'potty-log';
   if ('condition' in activity) return 'diaper-log';
   if ('doseAmount' in activity && 'medicineId' in activity) return 'medicine-log';
   if ('content' in activity) return 'note';

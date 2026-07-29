@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ActivityTile } from '@/src/components/ui/activity-tile';
 import { StatusBubble } from "@/src/components/ui/status-bubble";
-import { SleepLogResponse, FeedLogResponse, DiaperLogResponse, NoteResponse, BathLogResponse, PumpLogResponse, PlayLogResponse, MeasurementResponse, MilestoneResponse, MedicineLogResponse, VaccineLogResponse, ActivitySettings } from '@/app/api/types';
+import { SleepLogResponse, FeedLogResponse, DiaperLogResponse, PottyLogResponse, NoteResponse, BathLogResponse, PumpLogResponse, PlayLogResponse, MeasurementResponse, MilestoneResponse, MedicineLogResponse, VaccineLogResponse, ActivitySettings } from '@/app/api/types';
 import { ArrowDownUp } from 'lucide-react';
 import { useTheme } from '@/src/context/theme';
 import { useLocalization } from '@/src/context/localization';
@@ -30,6 +30,7 @@ interface ActivityTileGroupProps {
   onSleepClick: () => void;
   onFeedClick: () => void;
   onDiaperClick: () => void;
+  onPottyClick?: () => void;
   onNoteClick: () => void;
   onBathClick: () => void;
   onPumpClick: () => void;
@@ -47,7 +48,7 @@ interface ActivityTileGroupProps {
  * and displaying status bubbles with timing information.
  */
 // Activity type definition
-type ActivityType = 'sleep' | 'feed' | 'diaper' | 'note' | 'bath' | 'pump' | 'play' | 'measurement' | 'milestone' | 'medicine' | 'vaccine';
+type ActivityType = 'sleep' | 'feed' | 'diaper' | 'potty' | 'note' | 'bath' | 'pump' | 'play' | 'measurement' | 'milestone' | 'medicine' | 'vaccine';
 
 export function ActivityTileGroup({
   selectedBaby,
@@ -62,6 +63,7 @@ export function ActivityTileGroup({
   onSleepClick,
   onFeedClick,
   onDiaperClick,
+  onPottyClick = () => {},
   onNoteClick,
   onBathClick,
   onPumpClick,
@@ -99,7 +101,7 @@ export function ActivityTileGroup({
   if (!selectedBaby?.id) return null;
 
   // Define all activity types
-  const allActivityTypes: ActivityType[] = ['sleep', 'feed', 'diaper', 'note', 'bath', 'pump', 'play', 'measurement', 'milestone', 'medicine', 'vaccine'];
+  const allActivityTypes: ActivityType[] = ['sleep', 'feed', 'diaper', 'potty', 'note', 'bath', 'pump', 'play', 'measurement', 'milestone', 'medicine', 'vaccine'];
   
   // State for visible activities and their order
   const [visibleActivities, setVisibleActivities] = useState<Set<ActivityType>>(
@@ -262,7 +264,7 @@ export function ActivityTileGroup({
   // Function to set default settings
   const setDefaultSettings = () => {
     // Define all activity types
-    const allActivityTypes: ActivityType[] = ['sleep', 'feed', 'diaper', 'note', 'bath', 'pump', 'play', 'measurement', 'milestone', 'medicine', 'vaccine'];
+    const allActivityTypes: ActivityType[] = ['sleep', 'feed', 'diaper', 'potty', 'note', 'bath', 'pump', 'play', 'measurement', 'milestone', 'medicine', 'vaccine'];
     
     // Set default order and make all activities visible by default
     setActivityOrder([...allActivityTypes]);
@@ -280,8 +282,8 @@ export function ActivityTileGroup({
   };
   
   // Refs to store the original settings for comparison
-  const originalOrderRef = React.useRef<ActivityType[]>(['sleep', 'feed', 'diaper', 'note', 'bath', 'pump', 'play', 'measurement', 'milestone', 'medicine', 'vaccine']);
-  const originalVisibleRef = React.useRef<string[]>(['sleep', 'feed', 'diaper', 'note', 'bath', 'pump', 'play', 'measurement', 'milestone', 'medicine', 'vaccine']);
+  const originalOrderRef = React.useRef<ActivityType[]>(['sleep', 'feed', 'diaper', 'potty', 'note', 'bath', 'pump', 'play', 'measurement', 'milestone', 'medicine', 'vaccine']);
+  const originalVisibleRef = React.useRef<string[]>(['sleep', 'feed', 'diaper', 'potty', 'note', 'bath', 'pump', 'play', 'measurement', 'milestone', 'medicine', 'vaccine']);
   
   // Track if settings have been modified since loading
   const [settingsModified, setSettingsModified] = useState(false);
@@ -399,6 +401,7 @@ export function ActivityTileGroup({
     sleep: t('Sleep'),
     feed: t('Feed'),
     diaper: t('Diaper'),
+    potty: t('Potty'),
     note: t('Note'),
     bath: t('Bath'),
     pump: t('Pump'),
@@ -563,6 +566,33 @@ export function ActivityTileGroup({
           </div>
         );
       }
+      case 'potty':
+        return (
+          <div key="potty" className="relative w-[82px] min-h-24 flex-shrink-0 snap-center">
+            <ActivityTile
+              activity={{
+                type: 'WET',
+                id: 'potty-button',
+                babyId: selectedBaby.id,
+                time: new Date().toISOString(),
+                pottyLocation: null,
+                notes: '',
+                caretakerId: null,
+                familyId: null,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                deletedAt: null
+              } as unknown as PottyLogResponse}
+              title={t('Potty')}
+              variant="potty"
+              isButton={true}
+              onClick={() => {
+                updateUnlockTimer();
+                onPottyClick();
+              }}
+            />
+          </div>
+        );
       case 'note':
         return (
           <div key="note" className="relative w-[82px] min-h-24 flex-shrink-0 snap-center">

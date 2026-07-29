@@ -122,10 +122,13 @@
 .timeline-event.feed::before { 
   background: #7dd3fc !important; /* sky-300 - matches old timeline */
 }
-.timeline-event.diaper::before { 
+.timeline-event.diaper::before {
   background: #0d9488 !important; /* teal-600 - matches old timeline */
 }
-.timeline-event.note::before { 
+.timeline-event.potty::before {
+  background: #d946ef !important; /* fuchsia-500 - potty identity color */
+}
+.timeline-event.note::before {
   background: #fef08a !important; /* yellow-200 - matches old timeline */
 }
 .timeline-event.bath::before { 
@@ -177,7 +180,7 @@
   color: #374151 !important; /* gray-700 - matches old timeline */
   stroke: #374151 !important;
 }
-.event-icon.diaper { 
+.event-icon.diaper {
   background: linear-gradient(to right, #0d9488, #0f766e); /* teal gradient - matches old timeline */
 }
 .event-icon.diaper svg,
@@ -185,7 +188,15 @@
   color: #ffffff !important; /* white - matches old timeline */
   stroke: #ffffff !important;
 }
-.event-icon.note { 
+.event-icon.potty {
+  background: linear-gradient(to right, #d946ef, #c026d3); /* fuchsia gradient - potty identity color */
+}
+.event-icon.potty svg,
+.event-icon.potty svg path {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+.event-icon.note {
   background: #ffff99; /* yellow - matches old timeline */
 }
 .event-icon.note svg,
@@ -456,6 +467,16 @@ html.dark .event-icon.diaper {
 
 html.dark .event-icon.diaper svg,
 html.dark .event-icon.diaper svg path {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+html.dark .event-icon.potty {
+  background: linear-gradient(to right, #d946ef, #c026d3) !important; /* fuchsia gradient */
+}
+
+html.dark .event-icon.potty svg,
+html.dark .event-icon.potty svg path {
   color: #ffffff !important;
   stroke: #ffffff !important;
 }

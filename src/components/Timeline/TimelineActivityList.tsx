@@ -355,6 +355,7 @@ const TimelineActivityList = ({
                           if (bgClass.includes('bg-gradient-to-br from-gray-400')) return '#9ca3af'; // gray-400
                           if (bgClass.includes('bg-sky-200')) return '#7dd3fc'; // sky-300
                           if (bgClass.includes('bg-gradient-to-r from-teal-600')) return '#0d9488'; // teal-600
+                          if (bgClass.includes('bg-gradient-to-r from-fuchsia-500')) return '#d946ef'; // fuchsia-500 - potty identity color
                           if (bgClass.includes('bg-[#FFFF99]')) return '#fef08a'; // yellow-200
                           if (bgClass.includes('bg-gradient-to-r from-orange-400')) return '#fb923c'; // orange-400
                           if (bgClass.includes('bg-gradient-to-r from-purple-200')) return '#c084fc'; // purple-400
@@ -465,6 +466,17 @@ const TimelineActivityList = ({
                                             }
                                           }
                                           
+                                          // Potty before diaper — both carry `type`, but only PottyLog has `pottyLocation`.
+                                          if ('pottyLocation' in activity) {
+                                            const location = (activity as any).pottyLocation ? t((activity as any).pottyLocation) : '';
+                                            let notes: string = (activity as any).notes ?? '';
+                                            if (notes.length > 30) {
+                                              notes = notes.substring(0, 30) + '...';
+                                            }
+                                            const details = [location, notes].filter(Boolean);
+                                            return details.length > 0 ? details.join(' • ') : t('Potty');
+                                          }
+
                                           if ('condition' in activity) {
                                             // Diaper activity - only show details if there's actually something to show
                                             const details = [];

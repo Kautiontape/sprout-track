@@ -22,6 +22,8 @@ import { useToast } from '@/src/components/ui/toast';
 import { handleExpirationError } from '@/src/lib/expiration-error-handler';
 import { useLocalization } from '@/src/context/localization';
 
+import './potty-form.css';
+
 interface PottyFormProps {
   isOpen: boolean;
   onClose: () => void;
@@ -217,14 +219,14 @@ export default function PottyForm({
                 <button
                   type="button"
                   onClick={() => setShowLocationManager(!showLocationManager)}
-                  className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+                  className="potty-settings-button p-1 text-muted-foreground hover:text-foreground transition-colors"
                   title={t('Manage visible locations')}
                 >
                   <Settings className="h-4 w-4" />
                 </button>
               </div>
               {showLocationManager && (
-                <div className="mb-2 p-3 border border-gray-300 rounded-md bg-muted/50 space-y-1">
+                <div className="potty-location-manager mb-2 p-3 border border-gray-300 rounded-md bg-muted/50 space-y-1">
                   <p className="text-xs text-muted-foreground mb-2">{t('Toggle locations to show or hide them')}</p>
                   {POTTY_LOCATIONS.map(location => (
                     <label key={location} className="flex items-center gap-2 text-sm cursor-pointer">

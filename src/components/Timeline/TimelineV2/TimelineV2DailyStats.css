@@ -117,6 +117,10 @@ html.dark .timeline-v2-daily-stats .text-amber-700 {
   color: #b45309 !important; /* amber-700 - poops */
 }
 
+html.dark .timeline-v2-daily-stats .text-fuchsia-600 {
+  color: rgb(240 171 252) !important; /* fuchsia-300 - potty (matches activity-tile-icon-potty) */
+}
+
 
 /* Dark mode styles for TimelineV2Heatmap */
 html.dark .timeline-v2-heatmap-container {

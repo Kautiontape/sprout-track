@@ -2038,7 +2038,7 @@ Expected: no matches — these are the genuinely new ones.
 node scripts/check-missing-translations.js
 ```
 
-Expected: reports keys added to `es.json`, `fr.json`, `de.json`, `it.json`, and sorts all files.
+Expected: keys added to all eight non-English locales and every file re-sorted. Note there are **nine** translation files — `de`, `en`, `es`, `fr`, `it`, `nl`, `pt-br`, `pt-pt`, `ro`. `CLAUDE.md` documents only five (en/es/fr/de/it) and is out of date; trust `ls src/localization/translations/` over the doc.
 
 - [ ] **Step 3: Verify no hardcoded strings remain**
 

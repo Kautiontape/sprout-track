@@ -51,7 +51,7 @@ model PottyLog {
   id            String     @id @default(uuid())
   time          DateTime
   type          DiaperType // WET | DIRTY | BOTH — labeled Pee / Poop / Both in potty UI
-  pottyLocation String?    // POTTY_CHAIR | TOILET | SINK | TUB | OUTSIDE | OTHER
+  pottyLocation String?    // 'Potty Chair' | 'Toilet' | 'Sink' | 'Tub' | 'Outside' | 'Other'
   notes         String?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
@@ -86,7 +86,17 @@ values Pee / Poop / Both wherever potty is the subject.
 by duck-typing on field presence (`'condition' in activity` → diaper). A bare
 `location` would collide with `SleepLog.location` and `PlayLog.location`.
 `'pottyLocation' in activity` is collision-free and requires no refactoring of the
-existing `ActivityType` union. Stored as a string, mirroring `SleepLog.location`.
+existing `ActivityType` union. It must be checked **before** the `'type' in
+activity` block in `getActivityVariant()`: a `PottyLog` has `type` but none of
+`duration`, `quality`, `amount`, or `condition`, so it would otherwise fall
+through every branch and return `'default'`.
+
+Stored as a human-readable string, mirroring `SleepLog.location` — whose values
+are `'Bassinet'`, `'Crib'`, `'Car Seat'` and so on, not enum-style constants. The
+canonical list lives in `src/constants/potty-locations.ts` rather than inline in
+the form, because `PottyForm` and Nursery Mode must agree on it. (`SleepForm`
+defines its list inline, and Nursery Mode duplicates `BOTTLE_TYPES` with a comment
+warning that they must stay in sync — a shared constant avoids repeating that.)
 
 One `Settings` addition:
 
@@ -131,14 +141,26 @@ nagging about a diaper that is still clean. No `DiaperLog` aggregation changes.
 
 ### Main app
 
-- `src/components/forms/PottyForm/` and `src/components/modals/PottyModal.tsx`,
-  mirroring the diaper pair, wired from `app/(app)/[slug]/log-entry/page.tsx` via
-  an `onPottyClick` handler. Fields: time (`DateTimePicker`), type (Pee / Poop /
-  Both), receptacle (preset list with per-family hiding, as above), and an
-  optional free-text notes field backing `PottyLog.notes`.
-- A `potty` activity-tile variant using lucide-react's `toilet` icon. Light-mode
-  variants via CVA in `activity-tile.styles.ts`; dark mode via `html.dark`
-  selectors in the tile's `.css` file. No `dark:` Tailwind classes.
+- `src/components/forms/PottyForm/` only — **no `PottyModal`.** There is no live
+  diaper form/modal pair to mirror: `src/components/modals/DiaperModal.tsx` is
+  imported by nothing, and the `showDiaperModal` state in
+  `app/(app)/[slug]/log-entry/page.tsx` actually drives `DiaperForm`.
+  `DiaperModal.tsx` is dead code and should be deleted as separate cleanup.
+  `PottyForm` is wired from the log-entry page via an `onPottyClick` handler.
+  Fields: time (`DateTimePicker`), type (Pee / Poop / Both), receptacle (preset
+  list with per-family hiding, as above), and an optional free-text notes field
+  backing `PottyLog.notes`.
+- A `potty` activity-tile variant. **Icon note:** activity tiles render button
+  icons from PNG assets in `/public` (`styles.icon.defaultIcons`), one per
+  variant, and there is no `potty-128.png`. Rather than ship a broken image
+  reference, `ActivityTileIcon` gets an explicit potty branch rendering
+  lucide-react's `Toilet` for both the button and timeline paths, and `potty` is
+  deliberately *omitted* from `defaultIcons`. If a `/potty-128.png` asset is added
+  later, add the `defaultIcons` entry and delete the explicit branch. The variant
+  still needs entries in `button.variants`, `iconContainer.variants`, and
+  `icon.variants` or TypeScript will fail on the `as const` index. Light mode via
+  CVA in `activity-tile.styles.ts`; dark mode via `html.dark` selectors in the
+  tile's `.css` file. No `dark:` Tailwind classes.
 - `'potty'` added to the activity-settings default `order`/`visible` arrays. These
   are duplicated across roughly six literal sites in
   `app/api/activity-settings/route.ts` and

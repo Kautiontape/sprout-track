@@ -50,3 +50,13 @@ test('accepts epoch milliseconds', () => {
 test('treats an invalid date as absent', () => {
   assert.deepEqual(latestElimination('not-a-date', EARLY), { time: EARLY, source: 'potty' });
 });
+
+test('treats epoch 0 as a present time on the diaper side, not absent', () => {
+  // The explicit null/undefined/'' guard in toDate exists for exactly this:
+  // 0 is falsy but valid. A `!value` guard would wrongly drop it.
+  assert.deepEqual(latestElimination(0, null), { time: new Date(0), source: 'diaper' });
+});
+
+test('treats epoch 0 as a present time on the potty side, not absent', () => {
+  assert.deepEqual(latestElimination(null, 0), { time: new Date(0), source: 'potty' });
+});

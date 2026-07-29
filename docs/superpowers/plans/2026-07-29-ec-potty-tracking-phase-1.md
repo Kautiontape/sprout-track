@@ -590,6 +590,16 @@ test('accepts epoch milliseconds', () => {
 test('treats an invalid date as absent', () => {
   assert.deepEqual(latestElimination('not-a-date', EARLY), { time: EARLY, source: 'potty' });
 });
+
+test('treats epoch 0 as a present time on the diaper side, not absent', () => {
+  // The explicit null/undefined/'' guard in toDate exists for exactly this:
+  // 0 is falsy but valid. A `!value` guard would wrongly drop it.
+  assert.deepEqual(latestElimination(0, null), { time: new Date(0), source: 'diaper' });
+});
+
+test('treats epoch 0 as a present time on the potty side, not absent', () => {
+  assert.deepEqual(latestElimination(null, 0), { time: new Date(0), source: 'potty' });
+});
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -654,7 +664,9 @@ export function latestElimination(
 npx tsx --test src/lib/elimination.test.ts
 ```
 
-Expected: PASS, 9 tests.
+Expected: PASS, 11 tests.
+
+Verify the epoch-0 tests actually bite before moving on: temporarily change the guard to `if (!value) return null;` and confirm those two tests FAIL, then revert. A test that passes under the broken implementation protects nothing.
 
 - [ ] **Step 5: Commit**
 

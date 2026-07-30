@@ -61,6 +61,17 @@ check('empty: sleep 0', empty.totalSleepMinutes, 0);
 // --- Awake minutes: full past day = 1439 elapsed - 180 sleep ---
 check('full: awake minutes', full.awakeMinutes, 1439 - 180);
 
+// --- Potty catches never inflate diaper counts ---
+const pottyDay = computeDayStats([
+  { condition: 'NORMAL', type: 'WET', time: at(9, 0) } as any,
+  { type: 'WET', pottyLocation: 'Potty Chair', time: at(11, 0), notes: null } as any,
+  { type: 'DIRTY', pottyLocation: 'Toilet', time: at(14, 0), notes: null } as any,
+], day, opts);
+
+check('potty count', pottyDay.pottyCount, 2);
+check('potty does not inflate wet diapers', pottyDay.wetCount, 1);
+check('potty does not inflate poop count', pottyDay.poopCount, 0);
+
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed`);
   process.exit(1);

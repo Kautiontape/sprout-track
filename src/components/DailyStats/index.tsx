@@ -15,7 +15,8 @@ import {
   Scale,
   RotateCw,
   Thermometer,
-  PillBottle
+  PillBottle,
+  Toilet
 } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
 import { Card } from '@/src/components/ui/card';
@@ -119,9 +120,10 @@ export const DailyStats: React.FC<DailyStatsProps> = ({ activities, date, isLoad
     awakeTime, 
     sleepTime, 
     totalConsumed, 
-    diaperChanges, 
-    poopCount, 
-    leftBreastTime, 
+    diaperChanges,
+    poopCount,
+    pottyCount,
+    leftBreastTime,
     rightBreastTime, 
     noteCount, 
     solidsConsumed, 
@@ -157,6 +159,9 @@ export const DailyStats: React.FC<DailyStatsProps> = ({ activities, date, isLoad
     // For counting diapers and poops
     let diaperCount = 0;
     let poopCount = 0;
+
+    // For counting potty catches
+    let pottyCount = 0;
     
     // For tracking breast feeding per side
     let leftBreastSeconds = 0;
@@ -261,14 +266,26 @@ export const DailyStats: React.FC<DailyStatsProps> = ({ activities, date, isLoad
         }
       }
       
+      // Potty activities — checked before diapers: a PottyLog carries `type` just
+      // like a DiaperLog but never `condition`, so a potty catch can never reach
+      // the diaper branch below. Keep this discriminator ahead of it regardless.
+      if ('pottyLocation' in activity) {
+        const time = new Date(activity.time);
+
+        // Only count potty catches that occurred on the selected day
+        if (time >= startOfDay && time <= endOfDay) {
+          pottyCount++;
+        }
+      }
+
       // Diaper activities
       if ('condition' in activity && 'type' in activity) {
         const time = new Date(activity.time);
-        
+
         // Only count diapers that occurred on the selected day
         if (time >= startOfDay && time <= endOfDay) {
           diaperCount++;
-          
+
           // Count poops (dirty or wet+dirty)
           if (activity.type === 'DIRTY' || activity.type === 'BOTH') {
             poopCount++;
@@ -462,6 +479,7 @@ export const DailyStats: React.FC<DailyStatsProps> = ({ activities, date, isLoad
       totalConsumed: formattedConsumed || 'None',
       diaperChanges: diaperCount.toString(),
       poopCount: poopCount.toString(),
+      pottyCount: pottyCount.toString(),
       leftBreastTime: formatMinutes(Math.floor(leftBreastSeconds / 60)),
       rightBreastTime: formatMinutes(Math.floor(rightBreastSeconds / 60)),
       noteCount: noteCount.toString(),
@@ -490,6 +508,7 @@ export const DailyStats: React.FC<DailyStatsProps> = ({ activities, date, isLoad
               ...(totalConsumed !== 'None' ? [{ icon: <Icon iconNode={bottleBaby} className="h-3 w-3 text-sky-600" />, label: "Bottle", value: totalConsumed }] : []),
               ...(diaperChanges !== '0' ? [{ icon: <Icon iconNode={diaper} className="h-3 w-3 text-teal-600" />, label: "Diapers", value: diaperChanges }] : []),
               ...(poopCount !== '0' ? [{ icon: <Icon iconNode={diaper} className="h-3 w-3 text-amber-700" />, label: "Poops", value: poopCount }] : []),
+              ...(pottyCount !== '0' ? [{ icon: <Toilet className="h-3 w-3 text-fuchsia-600" />, label: "Potty", value: pottyCount }] : []),
               ...(solidsConsumed !== 'None' ? [{ icon: <Utensils className="h-3 w-3 text-green-600" />, label: "Solids", value: solidsConsumed }] : []),
               ...(leftBreastTime !== '0h 0m' ? [{ icon: <Droplet className="h-3 w-3 text-blue-500" />, label: "Left", value: leftBreastTime }] : []),
               ...(rightBreastTime !== '0h 0m' ? [{ icon: <Droplet className="h-3 w-3 text-red-500" />, label: "Right", value: rightBreastTime }] : []),
@@ -569,10 +588,17 @@ export const DailyStats: React.FC<DailyStatsProps> = ({ activities, date, isLoad
                 />
               )}
               {poopCount !== '0' && (
-                <StatItem 
-                  icon={<Icon iconNode={diaper} className="h-4 w-4 text-amber-700" />} 
-                  label="Poops" 
-                  value={poopCount} 
+                <StatItem
+                  icon={<Icon iconNode={diaper} className="h-4 w-4 text-amber-700" />}
+                  label="Poops"
+                  value={poopCount}
+                />
+              )}
+              {pottyCount !== '0' && (
+                <StatItem
+                  icon={<Toilet className="h-4 w-4 text-fuchsia-600" />}
+                  label="Potty"
+                  value={pottyCount}
                 />
               )}
               {solidsConsumed !== 'None' && (

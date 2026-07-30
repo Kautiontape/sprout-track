@@ -31,6 +31,7 @@ export interface DayStats {
   wetCount: number;
   dirtyCount: number;
   poopCount: number;
+  pottyCount: number;
   medicineStats: Record<string, MedicineStat>;
   supplementStats: Record<string, MedicineStat>;
   noteCount: number;
@@ -76,6 +77,7 @@ export function computeDayStats(
     wetCount: 0,
     dirtyCount: 0,
     poopCount: 0,
+    pottyCount: 0,
     medicineStats: {},
     supplementStats: {},
     noteCount: 0,
@@ -199,6 +201,17 @@ export function computeDayStats(
         }
         // Note: If no side specified, we don't track it separately to avoid inaccuracy
         // The feed is still counted in totalFeedCount
+      }
+    }
+
+    // Potty activities — checked before diapers: a PottyLog carries `type` just
+    // like a DiaperLog but never `condition`, so a potty catch can never reach
+    // the diaper branch below. Keep this discriminator ahead of it regardless.
+    if ('pottyLocation' in activity) {
+      const time = new Date((activity as any).time);
+      if (time >= startOfDay && time <= endBound) {
+        stats.hasAnyActivity = true;
+        stats.pottyCount++;
       }
     }
 

@@ -290,6 +290,27 @@ test('wakeUp.shareOfAllCatches is null when there are zero catches in range', ()
   assert.equal(stats.wakeUp.shareOfAllCatches, null);
 });
 
+// Range-boundary attribution contract: sleep candidates for the wake join are
+// NOT range-filtered (only potty/diaper rows are), so a sleep ending just
+// before the visible range can still claim an in-range catch as a wake-up
+// catch, while that same sleep is absent from the coverage denominators
+// (which ARE range-filtered, by design — see "iterate sleep sessions ending
+// inside the date range" in the research doc). This means wakeUpCatches can
+// legitimately exceed napCoverage.hit + nightCoverage.hit at range
+// boundaries. This is accepted, intentional behavior, not a bug: the UI must
+// not present wakeUpCatches as decomposable into (or reconcilable against)
+// the coverage hit counts.
+test('a sleep ending just before the range start can still attribute an in-range catch, without entering the coverage denominator', () => {
+  const activities = [
+    sleep('2026-07-14T23:00:00Z', '2026-07-14T23:55:00Z', 'NAP'), // ends 5 min before range start
+    potty('2026-07-15T00:01:00Z', 'WET'), // 6 min after that end, inside the window and inside DAY
+  ];
+  const stats = computePottyStats(activities, DAY, toLocalPartsUTC);
+  assert.equal(stats.wakeUp.wakeUpCatches, 1); // catch still attributed
+  assert.deepEqual(stats.wakeUp.napCoverage, { hit: 0, total: 0 }); // sleep excluded: its end is out of range
+  assert.deepEqual(stats.wakeUp.nightCoverage, { hit: 0, total: 0 });
+});
+
 test('medianGapMinutes is null with fewer than 10 wake-up catches', () => {
   const activities: unknown[] = [];
   for (let i = 0; i < 9; i++) {

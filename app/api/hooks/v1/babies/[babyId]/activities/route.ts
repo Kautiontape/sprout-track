@@ -6,7 +6,7 @@ import { hookSuccess, hookError } from '../../../response';
 import { notifyActivityCreated, resetTimerNotificationState } from '@/src/lib/notifications/activityHook';
 import { normalizeBottleType } from '../../../../../utils/bottleType';
 
-const VALID_TYPES = ['sleep', 'feed', 'diaper', 'note', 'pump', 'play', 'bath', 'measurement', 'medicine', 'supplement'] as const;
+const VALID_TYPES = ['sleep', 'feed', 'diaper', 'potty', 'note', 'pump', 'play', 'bath', 'measurement', 'medicine', 'supplement'] as const;
 type ActivityType = typeof VALID_TYPES[number];
 
 // ── Helper: resolve caretaker by name ──
@@ -80,6 +80,25 @@ async function handleGet(req: NextRequest, ctx: ApiKeyContext, routeContext: any
           id: r.id,
           time: r.time.toISOString(),
           details: { type: r.type, condition: r.condition, color: r.color, blowout: r.blowout },
+          caretakerName: r.caretaker?.name || null,
+        }));
+      })
+    );
+  }
+
+  if (types.includes('potty')) {
+    queries.push(
+      prisma.pottyLog.findMany({
+        where: { babyId, deletedAt: null, time: { gte: since } },
+        orderBy: { time: 'desc' },
+        take: limit,
+        include: { caretaker: { select: { name: true } } },
+      }).then((rows) => {
+        rows.forEach((r) => activities.push({
+          activityType: 'potty',
+          id: r.id,
+          time: r.time.toISOString(),
+          details: { type: r.type, pottyLocation: r.pottyLocation, notes: r.notes },
           caretakerName: r.caretaker?.name || null,
         }));
       })

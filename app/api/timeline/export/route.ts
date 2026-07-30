@@ -35,6 +35,9 @@ function getActivityDateTime(activity: any): string {
 function detectActivityType(activity: any): string {
   if ('duration' in activity && 'type' in activity && ('location' in activity || 'quality' in activity)) return 'sleep';
   if ('amount' in activity && 'type' in activity && ('side' in activity || 'food' in activity || 'feedDuration' in activity || 'bottleType' in activity)) return 'feed';
+  // Potty must be checked before diaper: a PottyLog has `type` but none of the
+  // fields the other discriminators key on, so it needs its own field (pottyLocation).
+  if ('pottyLocation' in activity) return 'potty';
   if ('condition' in activity && 'type' in activity) return 'diaper';
   if ('content' in activity) return 'note';
   if ('soapUsed' in activity) return 'bath';
@@ -54,6 +57,7 @@ function getActivityTypeName(type: string, translations: Record<string, string>)
     'sleep': 'Sleep',
     'feed': 'Feed',
     'diaper': 'Diaper',
+    'potty': 'Potty',
     'note': 'Note',
     'bath': 'Bath',
     'pump': 'Pump',
@@ -83,6 +87,13 @@ function getSubType(activity: any, type: string, translations: Record<string, st
     case 'diaper':
       if (activity.type === 'WET') return t('Wet', translations);
       if (activity.type === 'DIRTY') return t('Dirty', translations);
+      if (activity.type === 'BOTH') return t('Both', translations);
+      return activity.type || '';
+    case 'potty':
+      // Potty reuses the DiaperType enum but with Pee/Poop labels, never Wet/Dirty —
+      // a potty catch must never read like a diaper change.
+      if (activity.type === 'WET') return t('Pee', translations);
+      if (activity.type === 'DIRTY') return t('Poop', translations);
       if (activity.type === 'BOTH') return t('Both', translations);
       return activity.type || '';
     case 'pump':
@@ -184,6 +195,9 @@ function getDetails(activity: any, type: string, translations: Record<string, st
       if (activity.condition) parts.push(`${t('Condition', translations)}: ${activity.condition}`);
       if (activity.blowout) parts.push(t('Blowout', translations));
       if (activity.creamApplied) parts.push(t('Cream Applied', translations));
+      break;
+    case 'potty':
+      if (activity.pottyLocation) parts.push(`${t('Where', translations)}: ${t(activity.pottyLocation, translations)}`);
       break;
     case 'bath':
       if (activity.soapUsed) parts.push(t('Soap', translations));
@@ -348,7 +362,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
     const shouldFetch = (type: string) => !filter || filter === type;
     const emptyPromise = Promise.resolve([]);
 
-    const [sleepLogs, feedLogs, diaperLogs, noteLogs, bathLogs, pumpLogs, playLogs, milestoneLogs, measurementLogs, medicineLogs, breastMilkAdjustments, vaccineLogs] = await Promise.all([
+    const [sleepLogs, feedLogs, diaperLogs, pottyLogs, noteLogs, bathLogs, pumpLogs, playLogs, milestoneLogs, measurementLogs, medicineLogs, breastMilkAdjustments, vaccineLogs] = await Promise.all([
       shouldFetch('sleep') ? prisma.sleepLog.findMany({
         where: {
           babyId,
@@ -373,6 +387,14 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
         orderBy: { time: 'desc' },
       }) : emptyPromise,
       shouldFetch('diaper') ? prisma.diaperLog.findMany({
+        where: {
+          babyId, familyId,
+          ...(startDateUTC && endDateUTC ? { time: { gte: startDateUTC, lte: endDateUTC } } : {}),
+        },
+        include: { caretaker: true },
+        orderBy: { time: 'desc' },
+      }) : emptyPromise,
+      shouldFetch('potty') ? prisma.pottyLog.findMany({
         where: {
           babyId, familyId,
           ...(startDateUTC && endDateUTC ? { time: { gte: startDateUTC, lte: endDateUTC } } : {}),
@@ -473,6 +495,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
       ...sleepLogs.map(formatLog),
       ...feedLogs.map(formatLog),
       ...diaperLogs.map(formatLog),
+      ...pottyLogs.map(formatLog),
       ...noteLogs.map(formatLog),
       ...bathLogs.map(formatLog),
       ...pumpLogs.map(formatLog),

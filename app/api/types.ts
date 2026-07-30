@@ -566,6 +566,15 @@ export interface MonthlyReport {
       color: string;
     }[];
   };
+  // A sibling of `diapers` — a potty catch never contributes to the diaper counts above.
+  potty: {
+    totalCatches: number;
+    avgCatchesPerDay: number;
+    locationDistribution: {
+      location: string;
+      count: number;
+    }[];
+  };
   activity: {
     avgTummyTimePerDay: number;
     tummyTimeDelta: { value: number; direction: 'up' | 'down' | 'stable' } | null;

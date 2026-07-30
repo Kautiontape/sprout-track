@@ -346,6 +346,19 @@ async function handlePost(req: NextRequest, ctx: ApiKeyContext, routeContext: an
         return hookSuccess({ activityType: 'diaper', id: result.id, time: result.time.toISOString(), details: { type: diaperType, condition, color, blowout } }, { familyId, babyId }, rl.headers);
       }
 
+      case 'potty': {
+        const { pottyType, pottyLocation, notes } = body;
+        if (!pottyType || !['WET', 'DIRTY', 'BOTH'].includes(pottyType)) {
+          return hookError('INVALID_POTTY_TYPE', 'pottyType must be WET, DIRTY, or BOTH', 400, rl.headers);
+        }
+        result = await prisma.pottyLog.create({
+          data: { time, type: pottyType, pottyLocation: pottyLocation || null, notes: notes || null, babyId, caretakerId, familyId },
+        });
+        notifyActivityCreated(babyId, 'potty', { caretakerId }, { type: pottyType }).catch(console.error);
+        resetTimerNotificationState(babyId, 'diaper').catch(console.error);
+        return hookSuccess({ activityType: 'potty', id: result.id, time: result.time.toISOString(), details: { type: pottyType, pottyLocation, notes } }, { familyId, babyId }, rl.headers);
+      }
+
       case 'sleep': {
         const { sleepType, action, duration: sleepDuration, location, quality } = body;
         if (!action || !['start', 'end', 'log'].includes(action)) {

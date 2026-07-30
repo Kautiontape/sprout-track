@@ -31,7 +31,7 @@ import { Card, CardContent } from '@/src/components/ui/card';
 import { Loader2, Trash2, Bell, BellOff, ChevronDown, ChevronUp } from 'lucide-react';
 
 const ALL_ACTIVITY_TYPES = [
-  'feed', 'diaper', 'sleep', 'bath', 'pump', 'medicine', 'supplement', 'play', 'note', 'milestone', 'measurement',
+  'feed', 'diaper', 'potty', 'sleep', 'bath', 'pump', 'medicine', 'supplement', 'play', 'note', 'milestone', 'measurement',
 ] as const;
 
 interface NotificationSettingsProps {

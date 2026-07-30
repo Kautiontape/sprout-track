@@ -30,7 +30,7 @@ const PottySection: React.FC<PottySectionProps> = ({ potty }) => {
         {sharePercent !== null && (
           <div className={cn(s.metricCard, 'report-card-metric')}>
             <p className={cn(s.metricLabel, 'report-card-metric-label')}>{t('Poop catch rate')}</p>
-            <p className={cn(s.metricValue, 'text-fuchsia-600', 'report-card-metric-value-fuchsia')}>{sharePercent}%</p>
+            <p className={cn(s.metricValue, 'text-fuchsia-600', 'report-card-metric-value-potty')}>{sharePercent}%</p>
             <p className={cn(s.metricSub, s.metricSubNeutral, 'report-card-metric-sub-neutral')}>{t('of poops caught')}</p>
           </div>
         )}

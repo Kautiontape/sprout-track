@@ -82,7 +82,7 @@ html.dark .report-card-metric-sub-danger {
 }
 
 /* Potty section — fuchsia accent, consistent with the feature's identity color */
-html.dark .report-card-metric-value-fuchsia {
+html.dark .report-card-metric-value-potty {
   color: rgb(240 171 252) !important; /* fuchsia-300 */
 }
 

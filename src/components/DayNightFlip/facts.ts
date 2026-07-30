@@ -13,6 +13,9 @@ export type RawActivityData = {
   sleepLogs: { startTime: string; endTime: string | null }[];
   lastFeed: { time: string; endTime?: string | null } | null;
   diaperLogs: { time: string; type: 'WET' | 'DIRTY' | 'BOTH' }[];
+  // PottyLog reuses the DiaperType enum, so the same 'WET'|'BOTH' / 'DIRTY'|'BOTH'
+  // predicates that apply to diaperLogs apply here too.
+  pottyLogs: { time: string; type: 'WET' | 'DIRTY' | 'BOTH' }[];
   weights: { date: string; value: number; unit: string }[];
   birthDate: string;
 };
@@ -66,13 +69,28 @@ export function deriveFacts(
     ? new Date(raw.lastFeed.endTime || raw.lastFeed.time)
     : null;
 
+  // wetDiapersLast24h / dirtyDiapersLast24h are a HYDRATION SIGNAL (urine and
+  // stool output, used as an intake proxy) — NOT a diaper-usage statistic. A
+  // pee is a pee whether it lands in a diaper or gets caught on the potty
+  // during elimination communication (EC), so both sources are combined here.
+  // This is deliberately different from diaper *counts* shown in daily stats
+  // and reports, where a potty catch must never be counted as a diaper — see
+  // src/lib/elimination.ts for the sibling case of mixing the two sources.
+  // Do not "fix" this back to diaperLogs-only: that reintroduces a false
+  // pediatrician-call alert for every family practicing EC (see engine.ts R-42).
   let wetDiapersLast24h: number | null = null;
   let dirtyDiapersLast24h: number | null = null;
-  if (raw.diaperLogs.length > 0) {
+  if (raw.diaperLogs.length > 0 || raw.pottyLogs.length > 0) {
     const cutoff = now.getTime() - 24 * 3600 * 1000;
-    const recent = raw.diaperLogs.filter(d => new Date(d.time).getTime() >= cutoff);
-    wetDiapersLast24h = recent.filter(d => d.type === 'WET' || d.type === 'BOTH').length;
-    dirtyDiapersLast24h = recent.filter(d => d.type === 'DIRTY' || d.type === 'BOTH').length;
+    const isRecent = (t: string) => new Date(t).getTime() >= cutoff;
+    const isWet = (t: 'WET' | 'DIRTY' | 'BOTH') => t === 'WET' || t === 'BOTH';
+    const isDirty = (t: 'WET' | 'DIRTY' | 'BOTH') => t === 'DIRTY' || t === 'BOTH';
+    const recentDiapers = raw.diaperLogs.filter(d => isRecent(d.time));
+    const recentPotty = raw.pottyLogs.filter(d => isRecent(d.time));
+    wetDiapersLast24h =
+      recentDiapers.filter(d => isWet(d.type)).length + recentPotty.filter(d => isWet(d.type)).length;
+    dirtyDiapersLast24h =
+      recentDiapers.filter(d => isDirty(d.type)).length + recentPotty.filter(d => isDirty(d.type)).length;
   }
 
   const weights = raw.weights

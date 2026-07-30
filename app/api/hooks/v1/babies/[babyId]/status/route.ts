@@ -152,12 +152,19 @@ async function handleGet(req: NextRequest, ctx: ApiKeyContext, routeContext: any
   let dayNightFlip: Record<string, unknown> = { enabled: false };
   if (baby && flipConfig.enabled) {
     const nowDate = new Date();
-    const [flipSleeps, flipDiapers, flipWeights] = await Promise.all([
+    const [flipSleeps, flipDiapers, flipPotty, flipWeights] = await Promise.all([
       prisma.sleepLog.findMany({
         where: { babyId, deletedAt: null, startTime: { gte: new Date(nowDate.getTime() - 7 * 86400000) } },
         select: { startTime: true, endTime: true },
       }),
       prisma.diaperLog.findMany({
+        where: { babyId, deletedAt: null, time: { gte: new Date(nowDate.getTime() - 24 * 3600000) } },
+        select: { time: true, type: true },
+      }),
+      // Potty catches feed the same hydration signal as diaper logs — see the
+      // comment on wetDiapersLast24h in facts.ts. Without this, the public
+      // status API would false-alarm the R-42-wet escalation for EC families.
+      prisma.pottyLog.findMany({
         where: { babyId, deletedAt: null, time: { gte: new Date(nowDate.getTime() - 24 * 3600000) } },
         select: { time: true, type: true },
       }),
@@ -171,6 +178,7 @@ async function handleGet(req: NextRequest, ctx: ApiKeyContext, routeContext: any
       sleepLogs: flipSleeps.map(s => ({ startTime: s.startTime.toISOString(), endTime: s.endTime?.toISOString() ?? null })),
       lastFeed: lastFeed ? { time: lastFeed.time.toISOString(), endTime: lastFeed.endTime?.toISOString() ?? null } : null,
       diaperLogs: flipDiapers.map(d => ({ time: d.time.toISOString(), type: d.type as 'WET' | 'DIRTY' | 'BOTH' })),
+      pottyLogs: flipPotty.map(d => ({ time: d.time.toISOString(), type: d.type as 'WET' | 'DIRTY' | 'BOTH' })),
       weights: flipWeights.map(w => ({ date: w.date.toISOString(), value: w.value, unit: w.unit })),
       birthDate: baby.birthDate.toISOString(),
     }, null, nowDate);

@@ -7,7 +7,12 @@ export type ActivityFacts = {
   lastWakeTime: Date | null;
   napStartTime: Date | null; // non-null => currently sleeping
   lastFeedTime: Date | null;
-  wetDiapersLast24h: number | null; // null => no diaper data at all
+  // HYDRATION SIGNAL (voids in the trailing 24h), not a diaper-usage stat —
+  // combines diaper logs AND potty catches, since a pee is a pee regardless
+  // of where it landed. Diaper *statistics* (daily stats, reports) must never
+  // mix the two sources this way; see src/lib/elimination.ts and facts.ts.
+  // null => no diaper or potty data at all (not just zero in the last 24h).
+  wetDiapersLast24h: number | null;
   dirtyDiapersLast24h: number | null;
   latestWeight: { oz: number; date: Date } | null;
   previousWeight: { oz: number; date: Date } | null;
@@ -306,7 +311,7 @@ function buildEscalations(config: FlipConfig, facts: ActivityFacts): FlipNudge[]
   if (facts.wetDiapersLast24h !== null && facts.wetDiapersLast24h < 6) {
     out.push({
       id: 'R-42-wet',
-      text: `Only ${facts.wetDiapersLast24h} wet diapers in the last 24 hours, under the minimum of 6. Call your pediatrician.`,
+      text: `Only ${facts.wetDiapersLast24h} wet diapers or potty catches in the last 24 hours, under the minimum of 6. Call your pediatrician.`,
     });
   }
   if (facts.latestWeight && facts.previousWeight) {

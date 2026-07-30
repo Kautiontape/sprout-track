@@ -4,6 +4,7 @@ import { CardHeader } from '@/src/components/ui/card';
 import SleepForm from '@/src/components/forms/SleepForm';
 import FeedForm from '@/src/components/forms/FeedForm';
 import DiaperForm from '@/src/components/forms/DiaperForm';
+import PottyForm from '@/src/components/forms/PottyForm';
 import NoteForm from '@/src/components/forms/NoteForm';
 import BathForm from '@/src/components/forms/BathForm';
 import PumpForm from '@/src/components/forms/PumpForm';
@@ -41,7 +42,7 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
   const [settings, setSettings] = useState<Settings | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<ActivityType | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterType>(null);
-  const [editModalType, setEditModalType] = useState<'sleep' | 'feed' | 'diaper' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'medicine' | 'play' | 'vaccine' | null>(null);
+  const [editModalType, setEditModalType] = useState<'sleep' | 'feed' | 'diaper' | 'potty' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'medicine' | 'play' | 'vaccine' | null>(null);
   const [itemsPerPage, setItemsPerPage] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -107,6 +108,14 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
       return 'amount' in act;
     };
     
+    const isPottyActivity = (act: any): act is {
+      pottyLocation?: string;
+      type?: string;
+      notes?: string;
+    } => {
+      return 'pottyLocation' in act;
+    };
+
     const isDiaperActivity = (act: any): act is { 
       condition: string; 
       type?: string; 
@@ -185,6 +194,13 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
       return false;
     }
     
+    if (isPottyActivity(activity)) {
+      if (activity.type && activity.type.toLowerCase().includes(searchLower)) return true;
+      if (activity.pottyLocation && activity.pottyLocation.toLowerCase().includes(searchLower)) return true;
+      if (activity.notes && activity.notes.toLowerCase().includes(searchLower)) return true;
+      return false;
+    }
+
     if (isDiaperActivity(activity)) {
       if (activity.type && activity.type.toLowerCase().includes(searchLower)) return true;
       if (activity.condition && activity.condition.toLowerCase().includes(searchLower)) return true;
@@ -275,6 +291,8 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
               return 'duration' in activity;
             case 'feed':
               return 'amount' in activity;
+            case 'potty':
+              return 'pottyLocation' in activity;
             case 'diaper':
               return 'condition' in activity;
             case 'note':
@@ -331,6 +349,8 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
               return 'duration' in activity;
             case 'feed':
               return 'amount' in activity;
+            case 'potty':
+              return 'pottyLocation' in activity;
             case 'diaper':
               return 'condition' in activity;
             case 'note':
@@ -387,7 +407,7 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
   };
 
   // Handle activity editing
-  const handleEdit = (activity: ActivityType, type: 'sleep' | 'feed' | 'diaper' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'medicine' | 'play' | 'vaccine') => {
+  const handleEdit = (activity: ActivityType, type: 'sleep' | 'feed' | 'diaper' | 'potty' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'medicine' | 'play' | 'vaccine') => {
     setSelectedActivity(activity);
     setEditModalType(type);
   };
@@ -503,6 +523,21 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
             babyId={selectedActivity.babyId}
             initialTime={'time' in selectedActivity && selectedActivity.time ? String(selectedActivity.time) : getActivityTime(selectedActivity)}
             activity={'condition' in selectedActivity && 'type' in selectedActivity ? selectedActivity : undefined}
+            onSuccess={() => {
+              setEditModalType(null);
+              setSelectedActivity(null);
+              onActivityDeleted?.();
+            }}
+          />
+          <PottyForm
+            isOpen={editModalType === 'potty'}
+            onClose={() => {
+              setEditModalType(null);
+              setSelectedActivity(null);
+            }}
+            babyId={selectedActivity.babyId}
+            initialTime={'time' in selectedActivity && selectedActivity.time ? String(selectedActivity.time) : getActivityTime(selectedActivity)}
+            activity={'pottyLocation' in selectedActivity ? selectedActivity : undefined}
             onSuccess={() => {
               setEditModalType(null);
               setSelectedActivity(null);

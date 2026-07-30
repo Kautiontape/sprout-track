@@ -24,13 +24,15 @@ interface PottyStatCardProps {
   label: string;
   subLabel?: React.ReactNode;
   onClick?: () => void;
+  /** Downsizes the value slot for long phrase values (see VaccineStatsSection's Last Vaccine Date card). */
+  valueClassName?: string;
 }
 
 /** A single tappable (or plain) stat card, styled like the rest of Reports. */
-const PottyStatCard: React.FC<PottyStatCardProps> = ({ value, label, subLabel, onClick }) => (
+const PottyStatCard: React.FC<PottyStatCardProps> = ({ value, label, subLabel, onClick, valueClassName }) => (
   <Card className={cn(styles.statCard, 'reports-stat-card', onClick && 'cursor-pointer')} onClick={onClick}>
     <CardContent className="p-4">
-      <div className={cn(styles.statCardValue, 'reports-stat-card-value')}>{value}</div>
+      <div className={cn(styles.statCardValue, 'reports-stat-card-value', valueClassName)}>{value}</div>
       <div className={cn(styles.statCardLabel, 'reports-stat-card-label')}>{label}</div>
       {subLabel !== undefined && (
         <div className={cn(styles.statCardSubLabel, 'reports-stat-card-sublabel')}>{subLabel}</div>
@@ -103,6 +105,7 @@ const PottyStatsSection: React.FC<PottyStatsSectionProps> = ({ stats, dateRange 
                 />
                 <PottyStatCard
                   value={`${scoreboard.poopsCaught} ${t('caught')} · ${scoreboard.poopyDiapers} ${t('in diaper')}`}
+                  valueClassName="text-base"
                   label={t('Poops Caught vs Diapered')}
                   subLabel={
                     scoreboard.shareCaught === null

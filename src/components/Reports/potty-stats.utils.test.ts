@@ -472,3 +472,98 @@ test('day bucketing comes only from the injected toLocalParts, never a hardcoded
   assert.equal(offsetDay, '2026-07-14');
   assert.notEqual(utcDay, offsetDay);
 });
+
+// ---------------------------------------------------------------------------
+// EC anchor (firstCatchEver, 4th param): clamps day-based denominators to the
+// family's first-ever potty log, without touching numerator-only stats. See
+// docs/superpowers/specs/2026-07-30-ec-potty-stats-phase-2-design.md, "EC
+// anchor" — this is the fix for the user report that catches/day and the
+// poop catch rate were being diluted by pre-EC days/diapers.
+// ---------------------------------------------------------------------------
+
+test('firstCatchEver mid-range clamps daysInRange and avgCatchesPerDay to the inclusive post-anchor day count', () => {
+  const activities = [
+    potty('2026-07-09T09:00:00Z', 'WET'),
+    potty('2026-07-09T10:00:00Z', 'WET'),
+    potty('2026-07-10T09:00:00Z', 'WET'),
+    potty('2026-07-11T09:00:00Z', 'WET'),
+  ];
+  const stats = computePottyStats(activities, WEEK, toLocalPartsUTC, '2026-07-09T00:00:00Z');
+  // Anchor day 07-09 through range end 07-12 = 4 inclusive days (09,10,11,12).
+  assert.equal(stats.daysInRange, 4);
+  assert.equal(stats.avgCatchesPerDay, 1); // 4 catches / 4 days
+});
+
+test('firstCatchEver mid-range starts dailySeries at the anchor day, with no pre-anchor zero-fill dragging the rolling average', () => {
+  const activities = [
+    potty('2026-07-09T09:00:00Z', 'WET'),
+    potty('2026-07-09T10:00:00Z', 'WET'),
+    potty('2026-07-09T11:00:00Z', 'WET'),
+  ];
+  const stats = computePottyStats(activities, WEEK, toLocalPartsUTC, '2026-07-09T00:00:00Z');
+  assert.equal(stats.dailySeries.length, 4);
+  assert.deepEqual(
+    stats.dailySeries.map((d) => d.day),
+    ['2026-07-09', '2026-07-10', '2026-07-11', '2026-07-12']
+  );
+  // If pre-anchor days (07-06..07-08) had wrongly been zero-filled into the
+  // rolling window, the first day's average would be dragged toward 0.75
+  // (3/4) instead of reflecting only the single anchor day itself.
+  assert.equal(stats.rollingAvg7[0].value, 3);
+});
+
+test('firstCatchEver mid-range excludes pre-anchor dirty diapers from scoreboard.poopyDiapers and starts the weekly series at the anchor week', () => {
+  const TWO_WEEKS = range('2026-07-06T00:00:00Z', '2026-07-19T23:59:59Z'); // Mon 7/6 - Sun 7/19
+  const activities = [
+    diaper('2026-07-08T08:00:00Z', 'DIRTY'), // pre-anchor, week of 7/6 -- must be excluded
+    diaper('2026-07-16T08:00:00Z', 'DIRTY'), // post-anchor, week of 7/13 -- must count
+  ];
+  const stats = computePottyStats(activities, TWO_WEEKS, toLocalPartsUTC, '2026-07-15T00:00:00Z');
+  assert.equal(stats.scoreboard.poopyDiapers, 1);
+  assert.equal(stats.scoreboard.weekly.length, 1);
+  assert.deepEqual(stats.scoreboard.weekly[0], { weekStart: '2026-07-13', caught: 0, diapered: 1, share: 0 });
+});
+
+test('firstCatchEver mid-range excludes a sleep ending before the anchor from wake-up coverage totals, but includes one ending after', () => {
+  const TWO_DAYS = range('2026-07-14T00:00:00Z', '2026-07-15T23:59:59Z');
+  const activities = [
+    sleep('2026-07-14T07:00:00Z', '2026-07-14T08:00:00Z', 'NAP'), // ends pre-anchor (07-14)
+    sleep('2026-07-15T07:00:00Z', '2026-07-15T08:00:00Z', 'NAP'), // ends post-anchor (07-15)
+    potty('2026-07-15T08:05:00Z', 'WET'), // wake-up catch for the second nap
+  ];
+  const stats = computePottyStats(activities, TWO_DAYS, toLocalPartsUTC, '2026-07-15T00:00:00Z');
+  assert.deepEqual(stats.wakeUp.napCoverage, { hit: 1, total: 1 });
+});
+
+test('firstCatchEver at or before dateRange.from produces identical output to omitting it entirely', () => {
+  const activities = [
+    potty('2026-07-08T09:00:00Z', 'WET'),
+    potty('2026-07-08T12:00:00Z', 'DIRTY'),
+    diaper('2026-07-09T09:00:00Z', 'DIRTY'),
+    sleep('2026-07-08T06:00:00Z', '2026-07-08T07:00:00Z', 'NAP'),
+    potty('2026-07-08T07:05:00Z', 'WET'),
+  ];
+  const withoutAnchor = computePottyStats(activities, WEEK, toLocalPartsUTC);
+  const anchorBeforeRange = computePottyStats(activities, WEEK, toLocalPartsUTC, '2026-07-01T00:00:00Z');
+  const anchorAtRangeStart = computePottyStats(activities, WEEK, toLocalPartsUTC, '2026-07-06T00:00:00Z');
+  assert.deepEqual(anchorBeforeRange, withoutAnchor);
+  assert.deepEqual(anchorAtRangeStart, withoutAnchor);
+});
+
+test('firstCatchEver null or undefined produces identical output to a 3-argument call', () => {
+  const activities = [potty('2026-07-08T09:00:00Z', 'WET')];
+  const threeArg = computePottyStats(activities, WEEK, toLocalPartsUTC);
+  const explicitNull = computePottyStats(activities, WEEK, toLocalPartsUTC, null);
+  const explicitUndefined = computePottyStats(activities, WEEK, toLocalPartsUTC, undefined);
+  assert.deepEqual(explicitNull, threeArg);
+  assert.deepEqual(explicitUndefined, threeArg);
+});
+
+test('firstCatchEver equal to the last day of the range yields exactly 1 effective day with no NaN or Infinity', () => {
+  const activities = [potty('2026-07-12T09:00:00Z', 'WET')];
+  const stats = computePottyStats(activities, WEEK, toLocalPartsUTC, '2026-07-12T09:00:00Z');
+  assert.equal(stats.daysInRange, 1);
+  assert.equal(stats.avgCatchesPerDay, 1);
+  assert.ok(Number.isFinite(stats.avgCatchesPerDay));
+  assert.ok(!Number.isNaN(stats.avgCatchesPerDay));
+});

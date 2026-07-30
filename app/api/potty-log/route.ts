@@ -125,6 +125,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
     const babyId = searchParams.get('babyId');
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
+    const oldest = searchParams.get('oldest') === 'true';
 
     if (id) {
       const pottyLog = await prisma.pottyLog.findFirst({
@@ -139,6 +140,25 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
       }
 
       return NextResponse.json<ApiResponse<PottyLogResponse>>({ success: true, data: format(pottyLog) });
+    }
+
+    // EC anchor lookup: the single earliest non-deleted potty log ever
+    // logged, used by Reports to clamp day-based denominators. Not
+    // month/date-bounded — the anchor is always the all-time first catch.
+    if (oldest) {
+      const oldestLog = await prisma.pottyLog.findFirst({
+        where: {
+          familyId: userFamilyId,
+          ...(babyId && { babyId }),
+          deletedAt: null,
+        },
+        orderBy: { time: 'asc' },
+      });
+
+      return NextResponse.json<ApiResponse<PottyLogResponse | null>>({
+        success: true,
+        data: oldestLog ? format(oldestLog) : null,
+      });
     }
 
     const pottyLogs = await prisma.pottyLog.findMany({

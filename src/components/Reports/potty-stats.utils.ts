@@ -235,10 +235,27 @@ function zeroedStats(): PottyStats {
 // Main entry point
 // -----------------------------------------------------------------------------
 
+// EC anchor: when the caller supplies the timestamp of the baby's first-ever
+// potty log and it falls after the visible range's start, every "how many
+// days/opportunities were there" denominator clamps its window start to the
+// anchor's local day — see docs/superpowers/specs/2026-07-30-ec-potty-stats-
+// phase-2-design.md, "EC anchor". Numerator-only stats (hour histogram, total
+// catches) are computed over the unclamped range and are unaffected.
+function resolveAnchorDayKey(
+  firstCatchEver: Date | string | number | null | undefined,
+  toLocalParts: ToLocalParts
+): string | null {
+  if (firstCatchEver === null || firstCatchEver === undefined) return null;
+  const d = firstCatchEver instanceof Date ? firstCatchEver : new Date(firstCatchEver);
+  if (Number.isNaN(d.getTime())) return null;
+  return toLocalParts(d.toISOString())?.dayKey ?? null;
+}
+
 export function computePottyStats(
   activities: readonly unknown[],
   dateRange: PottyStatsDateRange,
-  toLocalParts: ToLocalParts
+  toLocalParts: ToLocalParts,
+  firstCatchEver?: Date | string | number | null
 ): PottyStats {
   if (!Array.isArray(activities) || !dateRange || !dateRange.from || !dateRange.to) {
     return zeroedStats();
@@ -263,9 +280,22 @@ export function computePottyStats(
     toKey = tmp;
   }
 
-  const dayKeys = enumerateDayKeys(fromKey, toKey);
-  const daysInRange = dayKeys.length;
-  const dayKeySet = new Set(dayKeys);
+  // rangeDayKeys/-Set: the visible range as requested, unaffected by the
+  // anchor — used to gate numerator-only stats (potty rows: totalCatches,
+  // pee/poop splits, hour histogram, the wake-up join).
+  const rangeDayKeys = enumerateDayKeys(fromKey, toKey);
+  const rangeDayKeySet = new Set(rangeDayKeys);
+
+  // effectiveDayKeys/-Set: the anchor-clamped window — used for every
+  // "how many days/opportunities were there" denominator (daysInRange,
+  // dailySeries/rollingAvg7, the weekly scoreboard series, the diaper
+  // denominator, and wake-up coverage totals). Day arithmetic is inclusive,
+  // so when the anchor lands on the range's last day, effective days = 1.
+  const anchorDayKey = resolveAnchorDayKey(firstCatchEver, toLocalParts);
+  const effectiveFromKey = anchorDayKey && anchorDayKey > fromKey ? anchorDayKey : fromKey;
+  const effectiveDayKeys = enumerateDayKeys(effectiveFromKey, toKey);
+  const daysInRange = effectiveDayKeys.length;
+  const effectiveDayKeySet = new Set(effectiveDayKeys);
 
   // --- classify activities (duck-typed; potty checked before diaper) ---
   const pottyRows: { time: string; type: unknown; dayKey: string; hour: number }[] = [];
@@ -278,7 +308,8 @@ export function computePottyStats(
     if (isPottyRow(raw)) {
       if (typeof raw.time !== 'string') continue;
       const parts = toLocalParts(raw.time);
-      if (!parts?.dayKey || !dayKeySet.has(parts.dayKey)) continue;
+      // Numerator-only: gated by the unclamped visible range, not the anchor.
+      if (!parts?.dayKey || !rangeDayKeySet.has(parts.dayKey)) continue;
       pottyRows.push({ time: raw.time, type: raw.type, dayKey: parts.dayKey, hour: parts.hour });
       continue;
     }
@@ -286,7 +317,8 @@ export function computePottyStats(
     if (isDiaperRow(raw)) {
       if (typeof raw.time !== 'string') continue;
       const parts = toLocalParts(raw.time);
-      if (!parts?.dayKey || !dayKeySet.has(parts.dayKey)) continue;
+      // Denominator: gated by the anchor-clamped window (dirty-diaper share).
+      if (!parts?.dayKey || !effectiveDayKeySet.has(parts.dayKey)) continue;
       diaperRows.push({ time: raw.time, type: raw.type, dayKey: parts.dayKey });
       continue;
     }
@@ -301,7 +333,7 @@ export function computePottyStats(
 
   // --- #1: catches per day, split pee/poop ---
   const dailyMap = new Map<string, PottyStatsDailyEntry>();
-  dayKeys.forEach((day) => dailyMap.set(day, { day, pees: 0, poops: 0, catches: 0 }));
+  effectiveDayKeys.forEach((day) => dailyMap.set(day, { day, pees: 0, poops: 0, catches: 0 }));
 
   let totalCatches = 0;
   let peesCaught = 0;
@@ -319,7 +351,7 @@ export function computePottyStats(
       if (dirty) bucket.poops++;
     }
   }
-  const dailySeries = dayKeys.map((day) => dailyMap.get(day) as PottyStatsDailyEntry);
+  const dailySeries = effectiveDayKeys.map((day) => dailyMap.get(day) as PottyStatsDailyEntry);
 
   const avgCatchesPerDay = daysInRange > 0 ? Math.round((totalCatches / daysInRange) * 10) / 10 : 0;
 
@@ -338,7 +370,7 @@ export function computePottyStats(
 
   const weekKeysOrdered: string[] = [];
   const seenWeeks = new Set<string>();
-  for (const day of dayKeys) {
+  for (const day of effectiveDayKeys) {
     const wk = weekStartKey(day);
     if (!seenWeeks.has(wk)) {
       seenWeeks.add(wk);
@@ -406,7 +438,7 @@ export function computePottyStats(
   let nightTotal = 0;
   for (const s of sleepRows) {
     if (!s.endTime) continue; // open-ended sleeps excluded from coverage denominators
-    if (!s.endDayKey || !dayKeySet.has(s.endDayKey)) continue; // ending inside the visible range only
+    if (!s.endDayKey || !effectiveDayKeySet.has(s.endDayKey)) continue; // ending inside the anchor-clamped window only
     const hit = matchedSleepRefs.has(s);
     if (s.type === 'NAP') {
       napTotal++;

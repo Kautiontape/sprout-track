@@ -6,6 +6,7 @@ import { cn } from '@/src/lib/utils';
 import { Accordion } from '@/src/components/ui/accordion';
 import { styles } from './reports.styles';
 import { useTimezone } from '@/app/context/timezone';
+import { useBaby } from '@/app/context/baby';
 import {
   StatsTabProps,
   ActivityType,
@@ -37,7 +38,50 @@ const StatsTab: React.FC<StatsTabProps> = ({
 }) => {
   const { t } = useLocalization();
   const { toLocalDate, dateFormat } = useTimezone();
+  const { selectedBaby } = useBaby();
   const [enableBreastMilkTracking, setEnableBreastMilkTracking] = useState(true);
+  // EC anchor (Phase 2 fix): the selected baby's first-ever potty log, fetched
+  // once per baby and passed into computePottyStats to clamp day-based
+  // denominators (catches/day, poop catch rate) to the days since EC actually
+  // started. Fetch failure fails open to null (== current, unanchored behavior).
+  const [firstCatchEver, setFirstCatchEver] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedBaby?.id) {
+      setFirstCatchEver(null);
+      return;
+    }
+
+    let cancelled = false;
+    const fetchFirstCatchEver = async () => {
+      try {
+        const authToken = localStorage.getItem('authToken');
+        const response = await fetch(`/api/potty-log?babyId=${selectedBaby.id}&oldest=true`, {
+          cache: 'no-store',
+          headers: {
+            'Authorization': authToken ? `Bearer ${authToken}` : '',
+            'Pragma': 'no-cache',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Expires': '0',
+          },
+        });
+        if (cancelled) return;
+        if (response.ok) {
+          const data = await response.json();
+          setFirstCatchEver(data.success && data.data?.time ? data.data.time : null);
+        } else {
+          setFirstCatchEver(null);
+        }
+      } catch {
+        if (!cancelled) setFirstCatchEver(null);
+      }
+    };
+    fetchFirstCatchEver();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBaby?.id]);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -626,7 +670,7 @@ const StatsTab: React.FC<StatsTabProps> = ({
 
     // Potty stats (Phase 2): all computation lives in the pure potty-stats.utils
     // module — only the timezone-aware day/hour extractor is injected here.
-    const potty = computePottyStats(activities, { from: dateRange.from as Date, to: dateRange.to as Date }, toLocalParts);
+    const potty = computePottyStats(activities, { from: dateRange.from as Date, to: dateRange.to as Date }, toLocalParts, firstCatchEver);
 
     return {
       sleep: {
@@ -689,7 +733,7 @@ const StatsTab: React.FC<StatsTabProps> = ({
         byType: playByTypeArray,
       },
     };
-  }, [activities, dateRange, getNightPeriodDateKey, getCalendarDayKey, toLocalParts]);
+  }, [activities, dateRange, getNightPeriodDateKey, getCalendarDayKey, toLocalParts, firstCatchEver]);
 
   // Sleep chart data for modals (per-day / per-night series)
   const sleepChartSeries = useMemo(() => {

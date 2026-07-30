@@ -97,6 +97,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     diaperLogs,
     // Potty — a sibling of diapers, never merged into diaper counts
     pottyLogs,
+    pottyAnchor,
     // Activity
     playLogs,
     prevPlayLogs,
@@ -141,6 +142,10 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
 
     // Potty
     prisma.pottyLog.findMany({ where: { ...baseWhere, time: { gte: start, lte: end } } }),
+    // EC anchor: the baby's first-ever potty log, NOT bounded to this month —
+    // see "EC anchor" in the Phase 2 design doc. Used only to clamp the potty
+    // block's day-based denominators below; never joined into diaper stats.
+    prisma.pottyLog.findFirst({ where: baseWhere, orderBy: { time: 'asc' } }),
 
     // Activity
     prisma.playLog.findMany({ where: { ...baseWhere, startTime: { gte: start, lte: end } } }),
@@ -522,11 +527,38 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     .map(([location, count]) => ({ location, count }))
     .sort((a, b) => b.count - a.count);
 
+  // EC anchor (see "EC anchor" in the Phase 2 design doc): clamps this potty
+  // block's day-based denominators to the days since the baby's first-ever
+  // potty log (`pottyAnchor`, fetched un-bounded by month above), so a
+  // mid-month EC start isn't diluted by pre-EC days/diapers. This is
+  // arithmetic local to the potty block only — the `diapers` block above,
+  // and `dirtyDiapers` itself, are untouched.
+  const pottyAnchorDate = pottyAnchor ? new Date(pottyAnchor.time) : null;
+  let pottyEffectiveDays = effectiveDays;
+  if (pottyAnchorDate && pottyAnchorDate.getFullYear() === year && pottyAnchorDate.getMonth() + 1 === month) {
+    // Anchor falls inside this month: inclusive day count from the anchor's
+    // day-of-month through effectiveDays (month end, or today if current).
+    pottyEffectiveDays = Math.max(1, effectiveDays - pottyAnchorDate.getDate() + 1);
+  } else if (
+    pottyAnchorDate &&
+    (pottyAnchorDate.getFullYear() > year || (pottyAnchorDate.getFullYear() === year && pottyAnchorDate.getMonth() + 1 > month))
+  ) {
+    // Anchor is from a later month than the one being reported: EC hadn't
+    // started yet during this month, so there were zero eligible days.
+    pottyEffectiveDays = 0;
+  }
+  // else: anchor predates this month entirely — the full month already
+  // counts, so pottyEffectiveDays stays equal to effectiveDays.
+
   // Poop catch share reads the diaper query's dirty count as its denominator —
   // arithmetic over already-fetched rows, never a write back into diaper stats.
+  // The denominator only counts diapers at/after the EC anchor.
   const caughtPoops = pottyLogs.filter(p => p.type === 'DIRTY' || p.type === 'BOTH').length;
-  const poopCatchShare = (caughtPoops + dirtyDiapers.length) > 0
-    ? caughtPoops / (caughtPoops + dirtyDiapers.length)
+  const dirtyDiapersSinceAnchor = pottyAnchorDate
+    ? dirtyDiapers.filter(d => d.time.getTime() >= pottyAnchorDate.getTime())
+    : dirtyDiapers;
+  const poopCatchShare = (caughtPoops + dirtyDiapersSinceAnchor.length) > 0
+    ? caughtPoops / (caughtPoops + dirtyDiapersSinceAnchor.length)
     : null;
 
   // ─── Activity ───
@@ -702,7 +734,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     },
     potty: {
       totalCatches: pottyLogs.length,
-      avgCatchesPerDay: effectiveDays > 0 ? Math.round((pottyLogs.length / effectiveDays) * 10) / 10 : 0,
+      avgCatchesPerDay: pottyEffectiveDays > 0 ? Math.round((pottyLogs.length / pottyEffectiveDays) * 10) / 10 : 0,
       locationDistribution: pottyLocationDistribution,
       poopCatchShare,
     },

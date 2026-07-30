@@ -515,7 +515,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
   // A sibling stat block, never folded into the diaper counts above.
   const pottyLocationMap = new Map<string, number>();
   pottyLogs.forEach(p => {
-    const loc = p.pottyLocation || 'Unknown';
+    const loc = p.pottyLocation || 'Not specified'; // existing translation key — matches normalizeLocation's convention
     pottyLocationMap.set(loc, (pottyLocationMap.get(loc) || 0) + 1);
   });
   const pottyLocationDistribution = Array.from(pottyLocationMap.entries())

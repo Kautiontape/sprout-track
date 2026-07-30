@@ -171,6 +171,10 @@ html.dark .reports-icon-diaper-poop {
   color: #fbbf24 !important; /* amber-400 */
 }
 
+html.dark .reports-icon-potty {
+  color: rgb(240 171 252) !important; /* fuchsia-300 */
+}
+
 html.dark .reports-icon-bath {
   color: #fb923c !important; /* orange-400 */
 }
@@ -546,5 +550,10 @@ html.dark .reports-play-type-name {
 }
 
 html.dark .reports-play-type-details {
+  color: #9ca3af !important; /* gray-400 */
+}
+
+/* Potty Stats Section */
+html.dark .reports-potty-coverage-line {
   color: #9ca3af !important; /* gray-400 */
 }

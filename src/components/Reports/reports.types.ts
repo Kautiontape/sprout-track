@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { SleepType, SleepQuality, FeedType, BreastSide, DiaperType, MeasurementType, MilestoneCategory } from '@prisma/client';
+import type { PottyStats } from './potty-stats.utils';
 
 /**
  * Types for the Reports component
@@ -343,6 +344,10 @@ export interface DiaperStats {
   daysInRange: number;
 }
 
+// Potty stats — the type is owned by potty-stats.utils.ts (the pure computation
+// module); re-exported here so there is exactly one definition.
+export type { PottyStats };
+
 // Pumping stats
 export interface PumpStats {
   pumpsPerDay: number;
@@ -391,6 +396,7 @@ export interface CombinedStats {
   sleep: SleepStats;
   feeding: FeedingStats;
   diaper: DiaperStats;
+  potty: PottyStats;
   other: OtherStats;
   pump: PumpStats;
   bath: BathStats;

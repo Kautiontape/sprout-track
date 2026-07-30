@@ -16,9 +16,11 @@ import {
 import SleepStatsSection from './SleepStatsSection';
 import FeedingStatsSection from './FeedingStatsSection';
 import DiaperStatsSection from './DiaperStatsSection';
+import PottyStatsSection from './PottyStatsSection';
 import PumpingStatsSection from './PumpingStatsSection';
 import BathStatsSection from './BathStatsSection';
 import PlayStatsSection from './PlayStatsSection';
+import { computePottyStats } from './potty-stats.utils';
 import { useLocalization } from '@/src/context/localization';
 import { formatDateShort } from '@/src/utils/dateFormat';
 
@@ -99,6 +101,18 @@ const StatsTab: React.FC<StatsTabProps> = ({
     const day = String(localDate.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
+
+  // Timezone-aware day-key + hour extractor injected into computePottyStats,
+  // per potty-stats.utils.ts's ToLocalParts signature (keeps that module pure).
+  const toLocalParts = (isoString: string): { dayKey: string; hour: number } => {
+    const localDate = toLocalDate(isoString);
+    if (!localDate) return { dayKey: '', hour: 0 };
+    const year = localDate.getFullYear();
+    const month = String(localDate.getMonth() + 1).padStart(2, '0');
+    const day = String(localDate.getDate()).padStart(2, '0');
+    return { dayKey: `${year}-${month}-${day}`, hour: localDate.getHours() };
+  };
+
   // Helper function to format minutes into hours and minutes
   const formatMinutes = (minutes: number): string => {
     if (minutes === 0) return '0m';
@@ -135,6 +149,25 @@ const StatsTab: React.FC<StatsTabProps> = ({
           avgWetPerDay: 0,
           avgPoopPerDay: 0,
           daysInRange: 1,
+        },
+        potty: {
+          totalCatches: 0,
+          peesCaught: 0,
+          poopsCaught: 0,
+          avgCatchesPerDay: 0,
+          daysInRange: 0,
+          dailySeries: [],
+          rollingAvg7: [],
+          scoreboard: { poopsCaught: 0, poopyDiapers: 0, shareCaught: null, weekly: [] },
+          wakeUp: {
+            windowMinutes: 20,
+            wakeUpCatches: 0,
+            shareOfAllCatches: null,
+            napCoverage: { hit: 0, total: 0 },
+            nightCoverage: { hit: 0, total: 0 },
+            medianGapMinutes: null,
+          },
+          hourHistogram: { binHours: 2, bins: [] },
         },
         other: {
           noteCount: 0,
@@ -591,6 +624,10 @@ const StatsTab: React.FC<StatsTabProps> = ({
       }))
       .sort((a, b) => b.count - a.count);
 
+    // Potty stats (Phase 2): all computation lives in the pure potty-stats.utils
+    // module — only the timezone-aware day/hour extractor is injected here.
+    const potty = computePottyStats(activities, { from: dateRange.from as Date, to: dateRange.to as Date }, toLocalParts);
+
     return {
       sleep: {
         totalSleepMinutes,
@@ -623,6 +660,7 @@ const StatsTab: React.FC<StatsTabProps> = ({
         avgPoopPerDay,
         daysInRange,
       },
+      potty,
       other: {
         noteCount,
         milestoneCount,
@@ -651,7 +689,7 @@ const StatsTab: React.FC<StatsTabProps> = ({
         byType: playByTypeArray,
       },
     };
-  }, [activities, dateRange, getNightPeriodDateKey, getCalendarDayKey]);
+  }, [activities, dateRange, getNightPeriodDateKey, getCalendarDayKey, toLocalParts]);
 
   // Sleep chart data for modals (per-day / per-night series)
   const sleepChartSeries = useMemo(() => {
@@ -813,7 +851,7 @@ const StatsTab: React.FC<StatsTabProps> = ({
 
   return (
     <div className="space-y-4">
-      <Accordion type="multiple" defaultValue={['sleep', 'feeding', 'diaper', 'activities', 'pumping', 'baths']}>
+      <Accordion type="multiple" defaultValue={['sleep', 'feeding', 'diaper', 'potty', 'activities', 'pumping', 'baths']}>
         {/* Sleep Section */}
         <SleepStatsSection
           stats={stats.sleep}
@@ -827,6 +865,9 @@ const StatsTab: React.FC<StatsTabProps> = ({
 
         {/* Diaper Section */}
         <DiaperStatsSection stats={stats.diaper} activities={activities} dateRange={dateRange} />
+
+        {/* Potty Section */}
+        <PottyStatsSection stats={stats.potty} dateRange={dateRange} />
 
         {/* Activities Section */}
         <PlayStatsSection stats={stats.play} activities={activities} dateRange={dateRange} />

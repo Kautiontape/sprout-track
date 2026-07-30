@@ -58,6 +58,25 @@ forgetting to log); predictive next-pee alarms.
    histogram and heatmap lane are the long-term charts; the wake-up panel is where
    the predictive value lives now. The potty heatmap lane sits **adjacent to the
    Wake and Feeds lanes** so the correlation is visible for free.
+7. **EC anchor.** User-reported (post-launch): a family that started EC partway
+   through the month saw "Catches/day 0.1" (4 catches ÷ ~30 days) and "Poop catch
+   rate 2%" (1 caught poop ÷ every dirty diaper that month) — both denominators
+   silently included the weeks before EC began. Their words: "We were not doing EC
+   since day 1. So only days since then matter." Fix: the EC anchor is the
+   timestamp of the baby's first-ever potty log (any type — anchoring on the first
+   caught *poop* specifically would bias the poop rate upward, since counting would
+   only start after a success). Every "how many days/opportunities were there"
+   denominator clamps its window start to the anchor's local day: daysInRange /
+   catches-per-day, the daily and weekly zero-filled series starts, the
+   dirty-diaper denominator behind `shareCaught` / `poopCatchShare`, and the
+   wake-up coverage denominators. Numerator-only stats (hour histogram, total
+   catches) are computed over the unclamped range and stay unaffected — a catch
+   can never precede the anchor by construction anyway. Day arithmetic is
+   inclusive (first catch today → 1 day, not 0). Implemented in
+   `computePottyStats`'s optional 4th param (`potty-stats.utils.ts`, client-side,
+   fetched once per selected baby via `GET /api/potty-log?babyId=X&oldest=true`)
+   and mirrored server-side in the monthly report route via an un-bounded
+   `pottyLog.findFirst(orderBy: time asc)`, scoped to the reported baby.
 
 ## Architecture
 

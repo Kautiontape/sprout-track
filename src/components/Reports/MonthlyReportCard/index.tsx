@@ -15,6 +15,7 @@ import GrowthSummarySection from './GrowthSummarySection';
 import FeedingSection from './FeedingSection';
 import SleepSection from './SleepSection';
 import DiapersSection from './DiapersSection';
+import PottySection from './PottySection';
 import ActivitySection from './ActivitySection';
 import MilestonesSection from './MilestonesSection';
 import HealthSection from './HealthSection';
@@ -312,6 +313,9 @@ const MonthlyReportCard: React.FC<MonthlyReportCardProps> = ({ className }) => {
 
           {/* Diapers */}
           <DiapersSection diapers={reportData.diapers} />
+
+          {/* Potty (hides itself when no catches this month) */}
+          <PottySection potty={reportData.potty} />
 
           {/* Activity & Play */}
           <ActivitySection activity={reportData.activity} />

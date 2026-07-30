@@ -43,6 +43,10 @@ export interface DiapersSectionProps extends SectionProps {
   diapers: MonthlyReport['diapers'];
 }
 
+export interface PottySectionProps extends SectionProps {
+  potty: MonthlyReport['potty'];
+}
+
 export interface ActivitySectionProps extends SectionProps {
   activity: MonthlyReport['activity'];
 }

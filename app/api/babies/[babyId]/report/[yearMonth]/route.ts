@@ -522,6 +522,13 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     .map(([location, count]) => ({ location, count }))
     .sort((a, b) => b.count - a.count);
 
+  // Poop catch share reads the diaper query's dirty count as its denominator —
+  // arithmetic over already-fetched rows, never a write back into diaper stats.
+  const caughtPoops = pottyLogs.filter(p => p.type === 'DIRTY' || p.type === 'BOTH').length;
+  const poopCatchShare = (caughtPoops + dirtyDiapers.length) > 0
+    ? caughtPoops / (caughtPoops + dirtyDiapers.length)
+    : null;
+
   // ─── Activity ───
   const tummyTimeLogs = playLogs.filter(p => p.type === 'TUMMY_TIME');
   const outdoorLogs = playLogs.filter(p => p.type === 'OUTDOOR_PLAY' || p.type === 'WALK');
@@ -697,6 +704,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
       totalCatches: pottyLogs.length,
       avgCatchesPerDay: effectiveDays > 0 ? Math.round((pottyLogs.length / effectiveDays) * 10) / 10 : 0,
       locationDistribution: pottyLocationDistribution,
+      poopCatchShare,
     },
     activity: {
       avgTummyTimePerDay,

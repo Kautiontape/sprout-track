@@ -574,6 +574,8 @@ export interface MonthlyReport {
       location: string;
       count: number;
     }[];
+    // caughtPoops / (caughtPoops + dirtyDiapers) for the month; null when denominator is 0.
+    poopCatchShare: number | null;
   };
   activity: {
     avgTummyTimePerDay: number;

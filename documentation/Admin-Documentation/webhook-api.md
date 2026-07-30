@@ -192,6 +192,7 @@ curl -s \
         "caretakerName": "Mom"
       },
       "diaper": { "time": "...", "minutesAgo": 45, "type": "WET" },
+      "potty": { "time": "...", "minutesAgo": 20, "type": "WET", "pottyLocation": "Potty Chair" },
       "sleep": { "startTime": "...", "endTime": "...", "minutesAgo": 120, "duration": 90, "type": "NAP", "isActive": false },
       "bath": { "time": "...", "minutesAgo": 300 },
       "medicine": { "time": "...", "minutesAgo": 480, "medicineName": "Infant Tylenol" },
@@ -203,6 +204,7 @@ curl -s \
       "feeds": 6,
       "diapers": 4,
       "diapersByType": { "WET": 3, "DIRTY": 0, "BOTH": 1 },
+      "pottyCatches": 3,
       "sleepMinutes": 180,
       "naps": 2,
       "baths": 1,
@@ -231,7 +233,7 @@ Recent activity logs with optional filtering.
 
 | Param | Default | Description |
 |-------|---------|-------------|
-| `type` | all | Filter by type: `feed`, `diaper`, `sleep`, `note`, `pump`, `play`, `bath`, `measurement`, `medicine`, `supplement` |
+| `type` | all | Filter by type: `feed`, `diaper`, `potty`, `sleep`, `note`, `pump`, `play`, `bath`, `measurement`, `medicine`, `supplement` |
 | `limit` | 10 | Max records per type (1–50) |
 | `since` | 24h ago | ISO 8601 datetime cutoff |
 
@@ -320,6 +322,26 @@ Optional fields: `amount`, `unitAbbr`, `side` (LEFT/RIGHT/BOTH), `food`, `notes`
 **diaperType:** `WET`, `DIRTY`, or `BOTH`
 
 Optional fields: `condition`, `color`, `blowout` (boolean)
+
+#### Potty
+
+A potty catch — elimination that did **not** go in a diaper.
+
+```json
+{
+  "type": "potty",
+  "pottyType": "WET",
+  "pottyLocation": "Potty Chair"
+}
+```
+
+**pottyType:** `WET` (pee), `DIRTY` (poop), or `BOTH`
+
+Optional fields: `pottyLocation` (`Potty Chair`, `Toilet`, `Sink`, `Tub`, `Outside`, `Other`), `notes`
+
+Potty catches are counted separately from diapers — `dailyCounts.diapers` never includes
+them, and `dailyCounts.pottyCatches` reports them on their own. A potty catch does reset
+the diaper timer, so `warnings.diaperOverdue` accounts for it: the diaper stayed clean.
 
 #### Sleep
 

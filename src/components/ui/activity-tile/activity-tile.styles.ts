@@ -69,6 +69,7 @@ export const activityTileStyles = {
       sleep: '/crib-128.png',
       feed: '/bottle-128.png',
       diaper: '/diaper-128.png',
+      potty: '/potty-128.png',
       note: '/note-128.png',
       bath: '/bath-128.png',
       pump: '/pump-128.png',

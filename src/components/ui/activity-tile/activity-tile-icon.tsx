@@ -17,25 +17,6 @@ export function ActivityTileIcon({
 }: ActivityTileIconProps & { variant?: ActivityTileVariant; isButton?: boolean }) {
   const variant = variantProp || getActivityVariant(activity);
 
-  // Potty has no PNG asset in /public, so it renders a Lucide icon in both the
-  // button and timeline paths. If /potty-128.png is ever added, add it to
-  // styles.icon.defaultIcons and delete this block.
-  if (variant === 'potty') {
-    return (
-      <div className={cn(
-        styles.iconContainer.base,
-        styles.iconContainer.variants.potty,
-        className
-      )}>
-        <Toilet className={cn(
-          'activity-tile-icon-potty',
-          styles.icon.base,
-          styles.icon.variants.potty
-        )} />
-      </div>
-    );
-  }
-
   let icon = null;
   
   // For buttons, always use the image icons
@@ -51,7 +32,10 @@ export function ActivityTileIcon({
   // For timeline view, use Lucide icons (smaller icons)
   else if (!isButton) {
     if ('type' in activity) {
-      if ('duration' in activity) {
+      // Potty before diaper — both carry `type`, but only PottyLog has `pottyLocation`.
+      if ('pottyLocation' in activity) {
+        icon = <Toilet className={cn('activity-tile-icon-potty', styles.icon.base, styles.icon.variants[variant])} />;
+      } else if ('duration' in activity) {
         icon = <Moon className={cn(styles.icon.base, styles.icon.variants[variant])} />;
       } else if ('amount' in activity) {
         icon = <Icon iconNode={bottleBaby} className={cn(styles.icon.base, styles.icon.variants[variant])} />;

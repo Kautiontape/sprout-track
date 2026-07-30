@@ -53,6 +53,7 @@
   margin: 14px 4px 6px; text-transform: uppercase; font-weight: 600; }
 .nursery-kiosk .nk-grid { display: grid; gap: 6px; grid-template-columns: 1fr 1fr 1fr; }
 .nursery-kiosk .nk-grid.two { grid-template-columns: 1fr 1fr; }
+.nursery-kiosk .nk-grid.one { grid-template-columns: 1fr; }
 .nursery-kiosk .nk-btn { background: var(--panel); color: var(--ink); border: 0;
   padding: 14px 6px; border-radius: 10px; font-size: 14px; font-weight: 500;
   min-height: 56px; cursor: pointer; }

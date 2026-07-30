@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useBaby } from '@/app/context/baby';
 import { useLocalization } from '@/src/context/localization';
+import { POTTY_LOCATIONS } from '@/src/constants/potty-locations';
 import './NurseryMode.css';
 
 type ToastKind = 'pend' | 'ok' | 'err';
@@ -30,6 +31,12 @@ interface DiaperSnap {
   id: string;
   time: number;
   type: 'WET' | 'DIRTY' | 'BOTH';
+}
+interface PottySnap {
+  id: string;
+  time: number;
+  type: 'WET' | 'DIRTY' | 'BOTH';
+  pottyLocation: string | null;
 }
 interface OpenSessionSnap {
   id: string;
@@ -132,6 +139,13 @@ export function NurseryMode() {
 
   const [lastFeed, setLastFeed] = useState<FeedSnap | null>(null);
   const [lastDiaper, setLastDiaper] = useState<DiaperSnap | null>(null);
+  const [lastPotty, setLastPotty] = useState<PottySnap | null>(null);
+
+  // potty sheet
+  const [pottyOpen, setPottyOpen] = useState(false);
+  const [pottyType, setPottyType] = useState<'WET' | 'DIRTY' | 'BOTH'>('WET');
+  const [pottyLocation, setPottyLocation] = useState<string>(POTTY_LOCATIONS[0]);
+  const [pottyHidden, setPottyHidden] = useState<string[]>([]);
   const [openSleep, setOpenSleep] = useState<OpenSessionSnap | null>(null);
   const [openPump, setOpenPump] = useState<OpenSessionSnap | null>(null);
   const [openBreast, setOpenBreast] = useState<{ id: string; side: 'LEFT' | 'RIGHT'; startTime: number } | null>(null);
@@ -240,11 +254,12 @@ export function NurseryMode() {
   const refreshStatus = useCallback(async () => {
     if (!selectedBaby?.id) return;
     try {
-      const [feeds, diapers, sleeps, pumps] = await Promise.all([
+      const [feeds, diapers, sleeps, pumps, potties] = await Promise.all([
         api<any[]>(`/api/feed-log?babyId=${selectedBaby.id}`),
         api<any[]>(`/api/diaper-log?babyId=${selectedBaby.id}`),
         api<any[]>(`/api/sleep-log?babyId=${selectedBaby.id}`),
         api<any[]>(`/api/pump-log?babyId=${selectedBaby.id}`),
+        api<any[]>(`/api/potty-log?babyId=${selectedBaby.id}`),
       ]);
       // An open breast session is type=BREAST + startTime set + endTime null.
       const breastOpen = (feeds || []).find((x: any) =>
@@ -263,6 +278,13 @@ export function NurseryMode() {
       } : null);
       const d = diapers?.[0];
       setLastDiaper(d ? { id: d.id, time: new Date(d.time).getTime(), type: d.type } : null);
+      const pt = potties?.[0];
+      setLastPotty(pt ? {
+        id: pt.id,
+        time: new Date(pt.time).getTime(),
+        type: pt.type,
+        pottyLocation: pt.pottyLocation ?? null,
+      } : null);
       const sOpen = (sleeps || []).find((x: any) => !x.endTime);
       setOpenSleep(sOpen ? { id: sOpen.id, startTime: new Date(sOpen.startTime).getTime() } : null);
       const pOpen = (pumps || []).find((x: any) => !x.endTime);
@@ -311,6 +333,21 @@ export function NurseryMode() {
     api<{ paired: boolean; buttons: HueButton[] }>('/api/hue')
       .then((cfg) => setHueButtons(cfg?.buttons ?? []))
       .catch(() => setHueButtons([]));
+  }, [authChecked]);
+
+  // --- load hidden potty receptacles + the last receptacle used on this device ---
+  // The last-used receptacle is remembered per device so consecutive catches in
+  // one bathroom do not require re-picking — it is a pre-selection, not a hidden
+  // default, and the chips remain visible.
+  useEffect(() => {
+    if (!authChecked) return;
+    api<{ hiddenLocations: string[] }>('/api/potty-location-settings')
+      .then((cfg) => setPottyHidden(cfg?.hiddenLocations ?? []))
+      .catch(() => setPottyHidden([]));
+    const remembered = localStorage.getItem('nkPottyLocation');
+    if (remembered && (POTTY_LOCATIONS as readonly string[]).includes(remembered)) {
+      setPottyLocation(remembered);
+    }
   }, [authChecked]);
 
   const activateScene = useCallback(async (btn: HueButton) => {
@@ -376,6 +413,44 @@ export function NurseryMode() {
           removeToast(toastId);
           try {
             await api(`/api/diaper-log?id=${data.id}`, { method: 'DELETE' });
+            pushToast(t('undone'), 'ok', { ms: 1500 });
+            await refreshStatus();
+          } catch (e: any) {
+            pushToast(e.message || t('undo failed'), 'err', { ms: 4000 });
+          }
+        },
+      });
+    } catch (e: any) {
+      pushToast(e.message || 'error', 'err', { ms: 5000 });
+    }
+  }, [selectedBaby?.id, pushToast, removeToast, refreshStatus, t]);
+
+  const commitPotty = useCallback(async (type: 'WET' | 'DIRTY' | 'BOTH', location: string, label: string) => {
+    if (!selectedBaby?.id) return;
+    try {
+      const data = await api<any>('/api/potty-log', {
+        method: 'POST',
+        body: JSON.stringify({
+          babyId: selectedBaby.id,
+          time: new Date().toISOString(),
+          type,
+          pottyLocation: location,
+        }),
+      });
+      setLastPotty({
+        id: data.id,
+        time: new Date(data.time).getTime(),
+        type: data.type,
+        pottyLocation: data.pottyLocation ?? null,
+      });
+      localStorage.setItem('nkPottyLocation', location);
+      let toastId = 0;
+      toastId = pushToast(label, 'ok', {
+        ms: 5000, undoable: true,
+        onUndo: async () => {
+          removeToast(toastId);
+          try {
+            await api(`/api/potty-log?id=${data.id}`, { method: 'DELETE' });
             pushToast(t('undone'), 'ok', { ms: 1500 });
             await refreshStatus();
           } catch (e: any) {
@@ -583,15 +658,16 @@ export function NurseryMode() {
 
   // Esc closes any open modal
   useEffect(() => {
-    if (!bottleOpen && !editKind) return;
+    if (!bottleOpen && !editKind && !pottyOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (bottleOpen) setBottleOpen(false);
       else if (editKind) setEditKind(null);
+      else if (pottyOpen) setPottyOpen(false);
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [bottleOpen, editKind]);
+  }, [bottleOpen, editKind, pottyOpen]);
 
   // --- bottle modal ---
   const openBottle = () => {
@@ -822,6 +898,12 @@ export function NurseryMode() {
         <button type="button" className="nk-btn" onClick={() => commitDiaper('BOTH', t('Diaper both'))}>{t('Both')}</button>
       </div>
 
+      <div className="nk-grid one">
+        <button type="button" className="nk-btn" onClick={() => setPottyOpen(true)}>
+          {t('Potty')}…
+        </button>
+      </div>
+
       <div className="nk-grid two nk-h-grid">
         <h2 className="nk-h2">{t('Sleep')}</h2>
         <h2 className="nk-h2">{t('Pump')}</h2>
@@ -905,6 +987,58 @@ export function NurseryMode() {
             <div className="nk-modal-actions">
               <button type="button" onClick={closeBottle}>{t('Cancel')}</button>
               <button type="button" className="primary" onClick={submitBottle}>{t('Log Bottle')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pottyOpen && (
+        <div className="nk-modal">
+          <div className="nk-sheet">
+            <h3>{t('Potty')}</h3>
+            <div className="nk-field">
+              <label>{t('Type')}</label>
+              <div className="nk-row">
+                {([['WET', 'Pee'], ['DIRTY', 'Poop'], ['BOTH', 'Both']] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={'nk-chip' + (pottyType === value ? ' on' : '')}
+                    onClick={() => setPottyType(value)}
+                  >
+                    {t(label)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="nk-field">
+              <label>{t('Where')}</label>
+              <div className="nk-types">
+                {POTTY_LOCATIONS.filter(loc => !pottyHidden.includes(loc)).map(loc => (
+                  <button
+                    key={loc}
+                    type="button"
+                    className={'nk-chip' + (pottyLocation === loc ? ' on' : '')}
+                    onClick={() => setPottyLocation(loc)}
+                  >
+                    {t(loc)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="nk-modal-actions">
+              <button type="button" onClick={() => setPottyOpen(false)}>{t('Cancel')}</button>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => {
+                  setPottyOpen(false);
+                  const typeLabel = pottyType === 'WET' ? t('Pee') : pottyType === 'DIRTY' ? t('Poop') : t('Both');
+                  void commitPotty(pottyType, pottyLocation, `${t('Potty')} · ${typeLabel} · ${t(pottyLocation)}`);
+                }}
+              >
+                {t('Log Potty')}
+              </button>
             </div>
           </div>
         </div>

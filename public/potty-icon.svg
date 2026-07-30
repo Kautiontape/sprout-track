@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <circle cx="64" cy="64" r="62" fill="#f8e0fb"/>
+  <!-- ground shadow -->
+  <ellipse cx="64" cy="115" rx="36" ry="6.5" fill="#000000" opacity="0.13"/>
+
+  <!-- backrest (drawn first, seat overlaps its base) -->
+  <rect x="38" y="14" width="52" height="42" rx="17"
+        fill="#d946ef" stroke="#701a75" stroke-width="5"/>
+  <!-- backrest inner glow -->
+  <rect x="46" y="21" width="36" height="26" rx="11" fill="#e879f9"/>
+
+  <!-- body / bowl -->
+  <path d="M31 58
+           C 30 82, 36 100, 47 104
+           L 81 104
+           C 92 100, 98 82, 97 58
+           Z"
+        fill="#d946ef" stroke="#701a75" stroke-width="5" stroke-linejoin="round"/>
+  <!-- body highlight -->
+  <path d="M39 64 C 38.5 80, 42 92, 47 97"
+        fill="none" stroke="#f0abfc" stroke-width="6" stroke-linecap="round" opacity="0.85"/>
+
+  <!-- feet -->
+  <rect x="38" y="102" width="14" height="10" rx="5" fill="#a21caf" stroke="#701a75" stroke-width="4"/>
+  <rect x="76" y="102" width="14" height="10" rx="5" fill="#a21caf" stroke="#701a75" stroke-width="4"/>
+
+  <!-- seat rim -->
+  <ellipse cx="64" cy="58" rx="40" ry="15.5"
+           fill="#e879f9" stroke="#701a75" stroke-width="5"/>
+  <!-- seat hole -->
+  <ellipse cx="64" cy="58" rx="22" ry="8" fill="#4a044e"/>
+  <!-- rim highlight -->
+  <path d="M33 54 C 38 47.5, 48 44, 58 43.5"
+        fill="none" stroke="#fae8ff" stroke-width="4.5" stroke-linecap="round" opacity="0.9"/>
+
+  <!-- celebration sparkles, teal to tie into the app palette -->
+  <path d="M22 30 L24.6 37.4 L32 40 L24.6 42.6 L22 50 L19.4 42.6 L12 40 L19.4 37.4 Z"
+        fill="#2dd4bf" stroke="#0f766e" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M104 22 L106 27.6 L111.6 29.6 L106 31.6 L104 37.2 L102 31.6 L96.4 29.6 L102 27.6 Z"
+        fill="#5eead4" stroke="#0f766e" stroke-width="2" stroke-linejoin="round"/>
+  <circle cx="100" cy="46" r="3" fill="#2dd4bf"/>
+</svg>

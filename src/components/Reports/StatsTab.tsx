@@ -41,9 +41,14 @@ const StatsTab: React.FC<StatsTabProps> = ({
   const { selectedBaby } = useBaby();
   const [enableBreastMilkTracking, setEnableBreastMilkTracking] = useState(true);
   // EC anchor (Phase 2 fix): the selected baby's first-ever potty log, fetched
-  // once per baby and passed into computePottyStats to clamp day-based
-  // denominators (catches/day, poop catch rate) to the days since EC actually
-  // started. Fetch failure fails open to null (== current, unanchored behavior).
+  // per baby (and refetched whenever `activities` changes — e.g. a mid-session
+  // backfill of an earlier-dated catch) and passed into computePottyStats to
+  // clamp day-based denominators (catches/day, poop catch rate) to the days
+  // since EC actually started. This is a cheap `oldest=true` lookup, safe to
+  // refire on activities changes. The compute module also self-heals against
+  // a stale anchor (see potty-stats.utils.ts), so this refetch is a freshness
+  // optimization, not the only thing keeping the numbers correct.
+  // Fetch failure fails open to null (== current, unanchored behavior).
   const [firstCatchEver, setFirstCatchEver] = useState<string | null>(null);
 
   useEffect(() => {
@@ -81,7 +86,7 @@ const StatsTab: React.FC<StatsTabProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [selectedBaby?.id]);
+  }, [selectedBaby?.id, activities]);
 
   useEffect(() => {
     const fetchSettings = async () => {

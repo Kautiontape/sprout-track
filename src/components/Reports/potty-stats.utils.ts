@@ -282,24 +282,17 @@ export function computePottyStats(
 
   // rangeDayKeys/-Set: the visible range as requested, unaffected by the
   // anchor — used to gate numerator-only stats (potty rows: totalCatches,
-  // pee/poop splits, hour histogram, the wake-up join).
+  // pee/poop splits, hour histogram, the wake-up join), and to pre-gate
+  // diaper candidates (see effectiveDayKeySet below for the final filter).
   const rangeDayKeys = enumerateDayKeys(fromKey, toKey);
   const rangeDayKeySet = new Set(rangeDayKeys);
 
-  // effectiveDayKeys/-Set: the anchor-clamped window — used for every
-  // "how many days/opportunities were there" denominator (daysInRange,
-  // dailySeries/rollingAvg7, the weekly scoreboard series, the diaper
-  // denominator, and wake-up coverage totals). Day arithmetic is inclusive,
-  // so when the anchor lands on the range's last day, effective days = 1.
-  const anchorDayKey = resolveAnchorDayKey(firstCatchEver, toLocalParts);
-  const effectiveFromKey = anchorDayKey && anchorDayKey > fromKey ? anchorDayKey : fromKey;
-  const effectiveDayKeys = enumerateDayKeys(effectiveFromKey, toKey);
-  const daysInRange = effectiveDayKeys.length;
-  const effectiveDayKeySet = new Set(effectiveDayKeys);
-
   // --- classify activities (duck-typed; potty checked before diaper) ---
+  // Diaper rows are gated to the unclamped visible range here; the
+  // anchor-clamped filter is applied below, once the (possibly self-healed)
+  // anchor is known — see effectiveDayKeySet.
   const pottyRows: { time: string; type: unknown; dayKey: string; hour: number }[] = [];
-  const diaperRows: { time: string; type: unknown; dayKey: string }[] = [];
+  const diaperCandidates: { time: string; type: unknown; dayKey: string }[] = [];
   const sleepRows: { endTime: string | null; type: unknown; endDayKey: string | null }[] = [];
 
   for (const raw of activities) {
@@ -317,9 +310,8 @@ export function computePottyStats(
     if (isDiaperRow(raw)) {
       if (typeof raw.time !== 'string') continue;
       const parts = toLocalParts(raw.time);
-      // Denominator: gated by the anchor-clamped window (dirty-diaper share).
-      if (!parts?.dayKey || !effectiveDayKeySet.has(parts.dayKey)) continue;
-      diaperRows.push({ time: raw.time, type: raw.type, dayKey: parts.dayKey });
+      if (!parts?.dayKey || !rangeDayKeySet.has(parts.dayKey)) continue;
+      diaperCandidates.push({ time: raw.time, type: raw.type, dayKey: parts.dayKey });
       continue;
     }
 
@@ -330,6 +322,42 @@ export function computePottyStats(
       continue;
     }
   }
+
+  // EC anchor, self-healing: a caller-supplied firstCatchEver can go stale
+  // (e.g. a catch backfilled mid-session before the fetched anchor was
+  // refreshed). If a catch in range predates the passed anchor, that catch
+  // IS the true earliest one — the module trusts the data over the
+  // timestamp, taking the minimum of the two, so it stays self-consistent
+  // (totals and series always agree) regardless of staleness. Only applies
+  // when an anchor was actually supplied — a null/undefined anchor is not
+  // "healed" into an anchor of its own.
+  const rawAnchorDayKey = resolveAnchorDayKey(firstCatchEver, toLocalParts);
+  let earliestCatchDayKey: string | null = null;
+  for (const row of pottyRows) {
+    if (earliestCatchDayKey === null || row.dayKey < earliestCatchDayKey) {
+      earliestCatchDayKey = row.dayKey;
+    }
+  }
+  const anchorDayKey =
+    rawAnchorDayKey && earliestCatchDayKey && earliestCatchDayKey < rawAnchorDayKey
+      ? earliestCatchDayKey
+      : rawAnchorDayKey;
+
+  // effectiveDayKeys/-Set: the anchor-clamped window — used for every
+  // "how many days/opportunities were there" denominator (daysInRange,
+  // dailySeries/rollingAvg7, the weekly scoreboard series, the diaper
+  // denominator, and wake-up coverage totals). Day arithmetic is inclusive,
+  // so when the anchor lands on the range's last day, effective days = 1.
+  const effectiveFromKey = anchorDayKey && anchorDayKey > fromKey ? anchorDayKey : fromKey;
+  const effectiveDayKeys = enumerateDayKeys(effectiveFromKey, toKey);
+  const daysInRange = effectiveDayKeys.length;
+  const effectiveDayKeySet = new Set(effectiveDayKeys);
+
+  // Denominator: gated by the anchor-clamped window (dirty-diaper share).
+  // effectiveDayKeySet is always a subset of rangeDayKeySet, so filtering
+  // the already range-gated candidates here is equivalent to gating
+  // directly by effectiveDayKeySet.
+  const diaperRows = diaperCandidates.filter((row) => effectiveDayKeySet.has(row.dayKey));
 
   // --- #1: catches per day, split pee/poop ---
   const dailyMap = new Map<string, PottyStatsDailyEntry>();

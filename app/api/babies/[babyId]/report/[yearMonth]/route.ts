@@ -552,10 +552,17 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
 
   // Poop catch share reads the diaper query's dirty count as its denominator —
   // arithmetic over already-fetched rows, never a write back into diaper stats.
-  // The denominator only counts diapers at/after the EC anchor.
+  // The denominator only counts diapers at/after the EC anchor. Compared by
+  // the start of the anchor's local day (not the exact instant) — deliberately
+  // matching the client module's day-key clamp (effectiveDayKeySet) and this
+  // function's own day-granular pottyEffectiveDays above, so the monthly card
+  // and the Stats tab agree on the same data.
   const caughtPoops = pottyLogs.filter(p => p.type === 'DIRTY' || p.type === 'BOTH').length;
-  const dirtyDiapersSinceAnchor = pottyAnchorDate
-    ? dirtyDiapers.filter(d => d.time.getTime() >= pottyAnchorDate.getTime())
+  const anchorDayStart = pottyAnchorDate
+    ? new Date(pottyAnchorDate.getFullYear(), pottyAnchorDate.getMonth(), pottyAnchorDate.getDate())
+    : null;
+  const dirtyDiapersSinceAnchor = anchorDayStart
+    ? dirtyDiapers.filter(d => d.time.getTime() >= anchorDayStart.getTime())
     : dirtyDiapers;
   const poopCatchShare = (caughtPoops + dirtyDiapersSinceAnchor.length) > 0
     ? caughtPoops / (caughtPoops + dirtyDiapersSinceAnchor.length)

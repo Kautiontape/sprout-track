@@ -567,3 +567,49 @@ test('firstCatchEver equal to the last day of the range yields exactly 1 effecti
   assert.ok(Number.isFinite(stats.avgCatchesPerDay));
   assert.ok(!Number.isNaN(stats.avgCatchesPerDay));
 });
+
+// A caller-supplied firstCatchEver can go stale (e.g. a backfilled catch
+// logged mid-session, before the fetched anchor was refreshed). The module
+// must be self-consistent regardless: if a catch in range predates the
+// passed anchor, that catch IS the true earliest one, so the module trusts
+// the data over the stale timestamp rather than silently dropping the catch
+// out of dailySeries/rollingAvg7 while still counting it in totalCatches.
+test('a pre-anchor catch in the input self-heals the anchor: it appears in dailySeries and daysInRange extends back to its day, so totals and series agree', () => {
+  const activities = [
+    potty('2026-07-07T09:00:00Z', 'WET'), // predates the passed (stale) anchor of 07-09
+    potty('2026-07-09T09:00:00Z', 'WET'),
+    potty('2026-07-10T09:00:00Z', 'WET'),
+  ];
+  const stats = computePottyStats(activities, WEEK, toLocalPartsUTC, '2026-07-09T00:00:00Z');
+
+  // daysInRange extends back to the pre-anchor catch's day (07-07), not the
+  // stale anchor's day (07-09): 07-07..07-12 inclusive = 6 days.
+  assert.equal(stats.daysInRange, 6);
+  assert.deepEqual(
+    stats.dailySeries.map((d) => d.day),
+    ['2026-07-07', '2026-07-08', '2026-07-09', '2026-07-10', '2026-07-11', '2026-07-12']
+  );
+  const preAnchorDay = stats.dailySeries.find((d) => d.day === '2026-07-07');
+  assert.deepEqual(preAnchorDay, { day: '2026-07-07', pees: 1, poops: 0, catches: 1 });
+
+  // Totals and series must agree: nothing silently absorbed out of the chart.
+  const seriesSum = stats.dailySeries.reduce((sum, d) => sum + d.catches, 0);
+  assert.equal(stats.totalCatches, 3);
+  assert.equal(seriesSum, stats.totalCatches);
+});
+
+// Pins the mid-week scoreboard boundary: an anchor landing mid-week only
+// clamps out diapers strictly before the anchor's own day, even within the
+// same ISO week the anchor falls in.
+test('a dirty diaper on the same week as the anchor but before the anchor day is excluded from that week (poopyDiapers and weekly.diapered)', () => {
+  const TWO_WEEKS = range('2026-07-06T00:00:00Z', '2026-07-19T23:59:59Z'); // Mon 7/6 - Sun 7/19
+  const activities = [
+    diaper('2026-07-13T08:00:00Z', 'DIRTY'), // Mon, same week as anchor, pre-anchor day
+    diaper('2026-07-14T08:00:00Z', 'DIRTY'), // Tue, same week as anchor, pre-anchor day
+    diaper('2026-07-16T08:00:00Z', 'DIRTY'), // Thu, same week as anchor, post-anchor day
+  ];
+  const stats = computePottyStats(activities, TWO_WEEKS, toLocalPartsUTC, '2026-07-15T00:00:00Z'); // anchor: Wed 7/15
+  assert.equal(stats.scoreboard.poopyDiapers, 1); // only Thursday counts
+  assert.equal(stats.scoreboard.weekly.length, 1);
+  assert.deepEqual(stats.scoreboard.weekly[0], { weekStart: '2026-07-13', caught: 0, diapered: 1, share: 0 });
+});

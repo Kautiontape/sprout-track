@@ -18,7 +18,8 @@ import {
   EyeOff,
   Baby,
   Syringe,
-  Info
+  Info,
+  Toilet
 } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
 import { Button } from '@/src/components/ui/button';
@@ -184,7 +185,7 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
       totalSleepMinutes, awakeMinutes, totalFeedCount,
       bottleFeedTotal, breastMilkBottleTotal, formulaBottleTotal, otherBottleTotal,
       leftBreastFeedMinutes, rightBreastFeedMinutes, solidsAmounts,
-      wetCount, poopCount, noteCount, bathCount, pumpCount, pumpTotal,
+      wetCount, poopCount, pottyCount, noteCount, bathCount, pumpCount, pumpTotal,
       milestoneCount, measurementCount, playCount, totalPlayMinutes, vaccineCount,
     } = dayStats;
 
@@ -364,6 +365,20 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
         bgActiveColor: 'bg-gray-100',
         avg: poopAvg !== null ? `${t('avg')} ${round1(poopAvg)}` : undefined,
         pace: buildPace(poopCount, averages?.expectedByNow?.poopCount, (n) => String(round1(n)), true),
+      });
+    }
+
+    // Potty tile
+    if (pottyCount > 0) {
+      tiles.push({
+        filter: 'potty',
+        label: t('Potty'),
+        value: pottyCount.toString(),
+        icon: <Toilet className="h-full w-full" />,
+        bgColor: 'bg-gray-50',
+        iconColor: 'text-fuchsia-600', // fuchsia - potty's identity color throughout this feature
+        borderColor: 'border-gray-500',
+        bgActiveColor: 'bg-gray-100'
       });
     }
 

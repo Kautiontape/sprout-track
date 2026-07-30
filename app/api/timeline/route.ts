@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '../db';
-import { ApiResponse, SleepLogResponse, FeedLogResponse, DiaperLogResponse, NoteResponse, BathLogResponse, PumpLogResponse, PlayLogResponse, MilestoneResponse, MeasurementResponse, MedicineLogResponse, MedicineResponse, BreastMilkAdjustmentResponse, VaccineLogResponse } from '../types';
+import { ApiResponse, SleepLogResponse, FeedLogResponse, DiaperLogResponse, PottyLogResponse, NoteResponse, BathLogResponse, PumpLogResponse, PlayLogResponse, MilestoneResponse, MeasurementResponse, MedicineLogResponse, MedicineResponse, BreastMilkAdjustmentResponse, VaccineLogResponse } from '../types';
 import { withAuthContext, AuthResult } from '../utils/auth';
 import { toUTC, formatForResponse } from '../utils/timezone';
 
 // Extended activity types with caretaker information
 type ActivityTypeWithCaretaker = (
-  SleepLogResponse | FeedLogResponse | DiaperLogResponse | NoteResponse | BathLogResponse | PumpLogResponse | PlayLogResponse | MilestoneResponse | MeasurementResponse | MedicineLogResponse | BreastMilkAdjustmentResponse | VaccineLogResponse
+  SleepLogResponse | FeedLogResponse | DiaperLogResponse | PottyLogResponse | NoteResponse | BathLogResponse | PumpLogResponse | PlayLogResponse | MilestoneResponse | MeasurementResponse | MedicineLogResponse | BreastMilkAdjustmentResponse | VaccineLogResponse
 ) & {
   caretakerId?: string | null;
   caretakerName?: string;
@@ -147,7 +147,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
 
     // Get recent activities from each type with caretaker information
     const emptyPromise = Promise.resolve([]);
-    const [sleepLogs, feedLogs, diaperLogs, noteLogs, bathLogs, pumpLogs, playLogs, milestoneLogs, measurementLogs, medicineLogs, breastMilkAdjustments, vaccineLogs] = await Promise.all([
+    const [sleepLogs, feedLogs, diaperLogs, pottyLogs, noteLogs, bathLogs, pumpLogs, playLogs, milestoneLogs, measurementLogs, medicineLogs, breastMilkAdjustments, vaccineLogs] = await Promise.all([
       shouldFetch('sleep') ? prisma.sleepLog.findMany({
         where: {
           babyId,
@@ -198,6 +198,22 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
         orderBy: { time: 'desc' }
       }) : emptyPromise,
       shouldFetch('diaper') ? prisma.diaperLog.findMany({
+        where: {
+          babyId,
+          ...(startDateUTC && endDateUTC ? {
+            time: {
+              gte: startDateUTC,
+              lte: endDateUTC
+            }
+          } : {}),
+          familyId, // Filter by the verified family ID
+        },
+        include: {
+          caretaker: true
+        },
+        orderBy: { time: 'desc' }
+      }) : emptyPromise,
+      shouldFetch('potty') ? prisma.pottyLog.findMany({
         where: {
           babyId,
           ...(startDateUTC && endDateUTC ? {
@@ -422,6 +438,23 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
         };
       });
 
+    const formattedPottyLogs: ActivityTypeWithCaretaker[] = pottyLogs
+      .map(log => {
+        // Create a new object without the caretaker property
+        const { caretaker, ...logWithoutCaretaker } = log;
+
+        // Format dates as ISO strings
+        return {
+          ...logWithoutCaretaker,
+          time: formatForResponse(log.time) || '',
+          createdAt: formatForResponse(log.createdAt) || '',
+          updatedAt: formatForResponse(log.updatedAt) || '',
+          deletedAt: formatForResponse(log.deletedAt),
+          caretakerId: log.caretakerId,
+          caretakerName: log.caretaker ? log.caretaker.name : undefined,
+        };
+      });
+
     const formattedNoteLogs: ActivityTypeWithCaretaker[] = noteLogs
       .map(log => {
         // Create a new object without the caretaker property
@@ -591,6 +624,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
       ...formattedSleepLogs,
       ...formattedFeedLogs,
       ...formattedDiaperLogs,
+      ...formattedPottyLogs,
       ...formattedNoteLogs,
       ...formattedBathLogs,
       ...formattedPumpLogs,

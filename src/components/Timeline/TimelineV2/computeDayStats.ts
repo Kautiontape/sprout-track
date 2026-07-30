@@ -31,6 +31,7 @@ export interface DayStats {
   wetCount: number;
   dirtyCount: number;
   poopCount: number;
+  pottyCount: number;
   medicineStats: Record<string, MedicineStat>;
   supplementStats: Record<string, MedicineStat>;
   noteCount: number;
@@ -76,6 +77,7 @@ export function computeDayStats(
     wetCount: 0,
     dirtyCount: 0,
     poopCount: 0,
+    pottyCount: 0,
     medicineStats: {},
     supplementStats: {},
     noteCount: 0,
@@ -202,8 +204,20 @@ export function computeDayStats(
       }
     }
 
+    // Potty activities. A PottyLog carries `type` just like a DiaperLog but never
+    // `condition`, so today the two are already disjoint. The `else if` on the
+    // diaper branch below makes that structural rather than incidental: if a record
+    // ever carried both fields, it would count once as potty instead of inflating
+    // the diaper counts. A potty catch must never increment a diaper count.
+    if ('pottyLocation' in activity) {
+      const time = new Date((activity as any).time);
+      if (time >= startOfDay && time <= endBound) {
+        stats.hasAnyActivity = true;
+        stats.pottyCount++;
+      }
+    }
     // Diaper activities
-    if ('condition' in activity && 'type' in activity) {
+    else if ('condition' in activity && 'type' in activity) {
       const time = new Date(activity.time);
       if (time >= startOfDay && time <= endBound) {
         stats.hasAnyActivity = true;

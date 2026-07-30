@@ -146,8 +146,8 @@ async function handler(req: NextRequest): Promise<NextResponse<ApiResponse<Famil
             defaultTempUnit: 'F',
             activitySettings: JSON.stringify({
               global: {
-                order: ['sleep', 'feed', 'diaper', 'note', 'bath', 'pump', 'measurement', 'milestone', 'medicine'],
-                visible: ['sleep', 'feed', 'diaper', 'note', 'bath', 'pump', 'measurement', 'milestone', 'medicine']
+                order: ['sleep', 'feed', 'diaper', 'potty', 'note', 'bath', 'pump', 'measurement', 'milestone', 'medicine'],
+                visible: ['sleep', 'feed', 'diaper', 'potty', 'note', 'bath', 'pump', 'measurement', 'milestone', 'medicine']
               }
             })
           },

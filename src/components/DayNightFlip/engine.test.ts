@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveNow, rescueTiming, sleepState, ActivityFacts } from './engine';
 import { DEFAULT_FLIP_CONFIG, FlipConfig } from './protocol';
+import { deriveFacts, RawActivityData } from './facts';
 
 const CFG: FlipConfig = { ...DEFAULT_FLIP_CONFIG, enabled: true };
 
@@ -137,6 +138,60 @@ test('R-42: <6 wet diapers in trailing 24h escalates; null suppresses', () => {
   assert.equal(noData.escalations.length, 0);
   const fine = resolveNow(CFG, facts({ lastWakeTime: at(10, 0), wetDiapersLast24h: 7 }), at(10, 30));
   assert.ok(!fine.escalations.some(e => e.id === 'R-42-wet'));
+});
+
+test('R-42 wording covers potty catches too, not just diapers (EC families)', () => {
+  const f = facts({ lastWakeTime: at(10, 0), wetDiapersLast24h: 4 });
+  const esc = resolveNow(CFG, f, at(10, 30)).escalations.find(e => e.id === 'R-42-wet');
+  assert.ok(esc, 'expected the low-void escalation to fire');
+  assert.match(esc!.text, /potty/i);
+});
+
+// A pee is a pee whether it lands in a diaper or gets caught on the potty
+// during EC — the escalation threshold must be judged against the TRUE
+// combined total, not diaper logs alone. These go through deriveFacts (not
+// the local `facts()` fixture builder) so the raw-log-to-escalation pipeline
+// is exercised end to end.
+test('R-42 + EC: 4 diapers + 3 potty catches (7 combined) must NOT escalate', () => {
+  const isoAt = (h: number, m: number) => at(h, m).toISOString();
+  const raw: RawActivityData = {
+    sleepLogs: [], lastFeed: null, weights: [],
+    birthDate: BIRTH.toISOString(),
+    diaperLogs: [
+      { time: isoAt(1, 0), type: 'WET' },
+      { time: isoAt(3, 0), type: 'WET' },
+      { time: isoAt(5, 0), type: 'WET' },
+      { time: isoAt(7, 0), type: 'WET' },
+    ],
+    pottyLogs: [
+      { time: isoAt(2, 0), type: 'WET' },
+      { time: isoAt(4, 0), type: 'WET' },
+      { time: isoAt(6, 0), type: 'WET' },
+    ],
+  };
+  const derived = deriveFacts(raw, null, at(10, 30));
+  const f = { ...derived, lastWakeTime: at(9, 0) };
+  const s = resolveNow(CFG, f, at(10, 30));
+  assert.ok(!s.escalations.some(e => e.id === 'R-42-wet'), '7 combined voids must not trigger the pediatrician call');
+});
+
+test('R-42 + EC: 2 diapers + 1 potty catch (3 combined) still escalates', () => {
+  const isoAt = (h: number, m: number) => at(h, m).toISOString();
+  const raw: RawActivityData = {
+    sleepLogs: [], lastFeed: null, weights: [],
+    birthDate: BIRTH.toISOString(),
+    diaperLogs: [
+      { time: isoAt(1, 0), type: 'WET' },
+      { time: isoAt(3, 0), type: 'WET' },
+    ],
+    pottyLogs: [
+      { time: isoAt(2, 0), type: 'WET' },
+    ],
+  };
+  const derived = deriveFacts(raw, null, at(10, 30));
+  const f = { ...derived, lastWakeTime: at(9, 0) };
+  const s = resolveNow(CFG, f, at(10, 30));
+  assert.ok(s.escalations.some(e => e.id === 'R-42-wet'), '3 combined voids must still escalate');
 });
 
 test('R-42/R-33 weight: loss escalates, implausible gain flags', () => {

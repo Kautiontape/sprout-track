@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import SleepForm from '@/src/components/forms/SleepForm';
 import FeedForm from '@/src/components/forms/FeedForm';
 import DiaperForm from '@/src/components/forms/DiaperForm';
+import PottyForm from '@/src/components/forms/PottyForm';
 import NoteForm from '@/src/components/forms/NoteForm';
 import BathForm from '@/src/components/forms/BathForm';
 import PumpForm from '@/src/components/forms/PumpForm';
@@ -19,12 +20,13 @@ import TimelineActivityDetails from '../TimelineActivityDetails';
 import { getActivityEndpoint, getActivityTime } from '../utils';
 import { SleepLogResponse, FeedLogResponse, DiaperLogResponse, PumpLogResponse, BreastMilkAdjustmentResponse, PlayLogResponse, VaccineLogResponse } from '@/app/api/types';
 import { useActivityCache } from './useActivityCache';
+import { latestElimination } from '@/src/lib/elimination';
 
 const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDeleted }: TimelineProps) => {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<ActivityType | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterType>(null);
-  const [editModalType, setEditModalType] = useState<'sleep' | 'feed' | 'diaper' | 'medicine' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'play' | 'vaccine' | null>(null);
+  const [editModalType, setEditModalType] = useState<'sleep' | 'feed' | 'diaper' | 'potty' | 'medicine' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'play' | 'vaccine' | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [isHeatmapVisible, setIsHeatmapVisible] = useState<boolean>(false);
 
@@ -72,8 +74,17 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
       .filter((a) => 'condition' in a && 'time' in a)
       .sort((a, b) => new Date((b as any).time).getTime() - new Date((a as any).time).getTime())[0];
 
-    if (lastDiaper) {
-      status.lastDiaperTime = new Date((lastDiaper as any).time);
+    // Find last potty catch — a potty catch also resets the "time since diaper" bubble.
+    const lastPottyEntry = activities
+      .filter((a) => 'pottyLocation' in a && 'time' in a)
+      .sort((a, b) => new Date((b as any).time).getTime() - new Date((a as any).time).getTime())[0];
+
+    const elimination = latestElimination(
+      lastDiaper ? (lastDiaper as any).time : null,
+      lastPottyEntry ? (lastPottyEntry as any).time : null
+    );
+    if (elimination) {
+      status.lastDiaperTime = elimination.time;
     }
 
     // Find sleep status
@@ -357,6 +368,8 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
             case 'poop':
               return 'condition' in activity && 'type' in activity &&
                      (activity.type === 'DIRTY' || activity.type === 'BOTH');
+            case 'potty':
+              return 'pottyLocation' in activity;
             case 'medicine':
               return 'doseAmount' in activity && 'medicineId' in activity;
             case 'note':
@@ -414,7 +427,7 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
     }
   };
 
-  const handleEdit = (activity: ActivityType, type: 'sleep' | 'feed' | 'diaper' | 'medicine' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'play' | 'vaccine') => {
+  const handleEdit = (activity: ActivityType, type: 'sleep' | 'feed' | 'diaper' | 'potty' | 'medicine' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'play' | 'vaccine') => {
     setSelectedActivity(activity);
     setEditModalType(type);
   };
@@ -502,6 +515,14 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
             babyId={selectedActivity.babyId}
             initialTime={getActivityTime(selectedActivity)}
             activity={'condition' in selectedActivity ? selectedActivity : undefined}
+            onSuccess={handleFormSuccess}
+          />
+          <PottyForm
+            isOpen={editModalType === 'potty'}
+            onClose={() => setEditModalType(null)}
+            babyId={selectedActivity.babyId}
+            initialTime={getActivityTime(selectedActivity)}
+            activity={'pottyLocation' in selectedActivity ? selectedActivity : undefined}
             onSuccess={handleFormSuccess}
           />
           <NoteForm

@@ -1,4 +1,4 @@
-import { Baby, SleepLog, FeedLog, DiaperLog, MoodLog, Note, Caretaker, Settings as PrismaSettings, Gender, SleepType, SleepQuality, FeedType, BreastSide, DiaperType, Mood, PumpLog, PlayLog, Milestone, MilestoneCategory, Measurement, MeasurementType, Medicine, MedicineLog, EmailConfig as PrismaEmailConfig, EmailProviderType, BreastMilkAdjustment, ActiveBreastFeed, ActiveActivity, VaccineLog, VaccineDocument } from '@prisma/client';
+import { Baby, SleepLog, FeedLog, DiaperLog, PottyLog, MoodLog, Note, Caretaker, Settings as PrismaSettings, Gender, SleepType, SleepQuality, FeedType, BreastSide, DiaperType, Mood, PumpLog, PlayLog, Milestone, MilestoneCategory, Measurement, MeasurementType, Medicine, MedicineLog, EmailConfig as PrismaEmailConfig, EmailProviderType, BreastMilkAdjustment, ActiveBreastFeed, ActiveActivity, VaccineLog, VaccineDocument } from '@prisma/client';
 
 // Family types
 export interface Family {
@@ -45,6 +45,11 @@ export interface ActivitySettings {
 
 // Sleep location settings types
 export interface SleepLocationSettings {
+  hiddenLocations: string[];
+}
+
+// Potty location settings types
+export interface PottyLocationSettings {
   hiddenLocations: string[];
 }
 
@@ -156,6 +161,22 @@ export interface DiaperLogCreate {
   color?: string;
   blowout?: boolean;
   creamApplied?: boolean;
+}
+
+// Potty log types
+export type PottyLogResponse = Omit<PottyLog, 'time' | 'createdAt' | 'updatedAt' | 'deletedAt'> & {
+  time: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+};
+
+export interface PottyLogCreate {
+  babyId: string;
+  time: string;
+  type: DiaperType;
+  pottyLocation?: string | null;
+  notes?: string | null;
 }
 
 // Mood log types
@@ -543,6 +564,15 @@ export interface MonthlyReport {
     colorFlags: {
       date: string;
       color: string;
+    }[];
+  };
+  // A sibling of `diapers` — a potty catch never contributes to the diaper counts above.
+  potty: {
+    totalCatches: number;
+    avgCatchesPerDay: number;
+    locationDistribution: {
+      location: string;
+      count: number;
     }[];
   };
   activity: {

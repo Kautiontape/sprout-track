@@ -1,5 +1,5 @@
 import React from 'react';
-import { Moon, Edit, Icon, LampWallDown, Trophy, Baby, Activity, Syringe } from 'lucide-react';
+import { Moon, Edit, Icon, LampWallDown, Trophy, Baby, Activity, Syringe, Toilet } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
 import { cn } from "@/src/lib/utils";
 import { activityTileStyles as styles } from './activity-tile.styles';
@@ -16,7 +16,26 @@ export function ActivityTileIcon({
   isButton = false
 }: ActivityTileIconProps & { variant?: ActivityTileVariant; isButton?: boolean }) {
   const variant = variantProp || getActivityVariant(activity);
-  
+
+  // Potty has no PNG asset in /public, so it renders a Lucide icon in both the
+  // button and timeline paths. If /potty-128.png is ever added, add it to
+  // styles.icon.defaultIcons and delete this block.
+  if (variant === 'potty') {
+    return (
+      <div className={cn(
+        styles.iconContainer.base,
+        styles.iconContainer.variants.potty,
+        className
+      )}>
+        <Toilet className={cn(
+          'activity-tile-icon-potty',
+          styles.icon.base,
+          styles.icon.variants.potty
+        )} />
+      </div>
+    );
+  }
+
   let icon = null;
   
   // For buttons, always use the image icons

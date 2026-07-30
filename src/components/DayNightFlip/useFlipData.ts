@@ -57,13 +57,17 @@ export function useFlipData() {
       const start = new Date(now.getTime() - 7 * 86400000).toISOString();
       const end = new Date(now.getTime() + 86400000).toISOString();
       const dStart = new Date(now.getTime() - 2 * 86400000).toISOString();
-      const [sleepLogs, lastFeed, diaperLogs, weights, feedsRecent] = await Promise.all([
+      const [sleepLogs, lastFeed, diaperLogs, pottyLogs, weights, feedsRecent] = await Promise.all([
         getJson<{ startTime: string; endTime: string | null }[]>(
           `/api/sleep-log?babyId=${babyId}&startDate=${start}&endDate=${end}`),
         getJson<{ time: string; endTime?: string | null }>(
           `/api/feed-log/last?babyId=${babyId}`),
         getJson<{ time: string; type: 'WET' | 'DIRTY' | 'BOTH' }[]>(
           `/api/diaper-log?babyId=${babyId}&startDate=${dStart}&endDate=${end}`),
+        // Potty catches count toward the hydration signal in facts.ts alongside
+        // diaper logs — see the comment on wetDiapersLast24h there.
+        getJson<{ time: string; type: 'WET' | 'DIRTY' | 'BOTH' }[]>(
+          `/api/potty-log?babyId=${babyId}&startDate=${dStart}&endDate=${end}`),
         getJson<{ date: string; value: number; unit: string }[]>(
           `/api/measurement-log?babyId=${babyId}&type=WEIGHT`),
         getJson<{ time: string }[]>(
@@ -73,6 +77,7 @@ export function useFlipData() {
         sleepLogs: sleepLogs ?? [],
         lastFeed: lastFeed ?? null,
         diaperLogs: diaperLogs ?? [],
+        pottyLogs: pottyLogs ?? [],
         weights: weights ?? [],
         birthDate: String(selectedBaby.birthDate),
       });

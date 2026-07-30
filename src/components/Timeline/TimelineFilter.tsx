@@ -12,6 +12,7 @@ import {
   Trophy,
   Ruler,
   PillBottle,
+  Toilet,
 } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
 import { FilterType, TimelineFilterProps } from './types';
@@ -49,6 +50,7 @@ const TimelineFilter = ({
     { type: 'sleep', icon: <Moon className="h-4 w-4" />, label: t('Sleep') },
     { type: 'feed', icon: <Icon iconNode={bottleBaby} className="h-4 w-4" />, label: t('Feed') },
     { type: 'diaper', icon: <Icon iconNode={diaper} className="h-4 w-4" />, label: t('Diaper') },
+    { type: 'potty', icon: <Toilet className="h-4 w-4" />, label: t('Potty') },
     { type: 'bath', icon: <Bath className="h-4 w-4" />, label: t('Bath') },
     { type: 'note', icon: <Edit className="h-4 w-4" />, label: t('Note') },
     { type: 'pump', icon: <LampWallDown className="h-4 w-4" />, label: t('Pump') },

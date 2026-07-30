@@ -95,6 +95,8 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     sleepLogs,
     // Diapers
     diaperLogs,
+    // Potty — a sibling of diapers, never merged into diaper counts
+    pottyLogs,
     // Activity
     playLogs,
     prevPlayLogs,
@@ -108,6 +110,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     feedDates,
     sleepDates,
     diaperDates,
+    pottyDates,
     bathDates,
     playDates,
     medicineDates,
@@ -136,6 +139,9 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     // Diapers
     prisma.diaperLog.findMany({ where: { ...baseWhere, time: { gte: start, lte: end } } }),
 
+    // Potty
+    prisma.pottyLog.findMany({ where: { ...baseWhere, time: { gte: start, lte: end } } }),
+
     // Activity
     prisma.playLog.findMany({ where: { ...baseWhere, startTime: { gte: start, lte: end } } }),
     prisma.playLog.findMany({ where: { ...baseWhere, startTime: { gte: prevRange.start, lte: prevRange.end } } }),
@@ -152,6 +158,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     prisma.feedLog.findMany({ where: { ...baseWhere, time: { gte: start, lte: end } }, select: { time: true, caretakerId: true } }),
     prisma.sleepLog.findMany({ where: { ...baseWhere, startTime: { gte: start, lte: end } }, select: { startTime: true, caretakerId: true } }),
     prisma.diaperLog.findMany({ where: { ...baseWhere, time: { gte: start, lte: end } }, select: { time: true, caretakerId: true } }),
+    prisma.pottyLog.findMany({ where: { ...baseWhere, time: { gte: start, lte: end } }, select: { time: true, caretakerId: true } }),
     prisma.bathLog.findMany({ where: { ...baseWhere, time: { gte: start, lte: end } }, select: { time: true, caretakerId: true } }),
     prisma.playLog.findMany({ where: { ...baseWhere, startTime: { gte: start, lte: end } }, select: { startTime: true, caretakerId: true } }),
     prisma.medicineLog.findMany({ where: { ...baseWhere, time: { gte: start, lte: end } }, select: { time: true, caretakerId: true } }),
@@ -166,6 +173,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
   feedDates.forEach(r => addDate(r.time));
   sleepDates.forEach(r => addDate(r.startTime));
   diaperDates.forEach(r => addDate(r.time));
+  pottyDates.forEach(r => addDate(r.time));
   bathDates.forEach(r => addDate(r.time));
   playDates.forEach(r => addDate(r.startTime));
   medicineDates.forEach(r => addDate(r.time));
@@ -503,6 +511,17 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
       color: d.color!,
     }));
 
+  // ─── Potty ───
+  // A sibling stat block, never folded into the diaper counts above.
+  const pottyLocationMap = new Map<string, number>();
+  pottyLogs.forEach(p => {
+    const loc = p.pottyLocation || 'Unknown';
+    pottyLocationMap.set(loc, (pottyLocationMap.get(loc) || 0) + 1);
+  });
+  const pottyLocationDistribution = Array.from(pottyLocationMap.entries())
+    .map(([location, count]) => ({ location, count }))
+    .sort((a, b) => b.count - a.count);
+
   // ─── Activity ───
   const tummyTimeLogs = playLogs.filter(p => p.type === 'TUMMY_TIME');
   const outdoorLogs = playLogs.filter(p => p.type === 'OUTDOOR_PLAY' || p.type === 'WALK');
@@ -586,6 +605,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
   feedDates.forEach(r => countCaretaker(r.caretakerId));
   sleepDates.forEach(r => countCaretaker(r.caretakerId));
   diaperDates.forEach(r => countCaretaker(r.caretakerId));
+  pottyDates.forEach(r => countCaretaker(r.caretakerId));
   bathDates.forEach(r => countCaretaker(r.caretakerId));
   playDates.forEach(r => countCaretaker(r.caretakerId));
   medicineDates.forEach(r => countCaretaker(r.caretakerId));
@@ -672,6 +692,11 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
       blowoutCount,
       creamApplicationRate,
       colorFlags,
+    },
+    potty: {
+      totalCatches: pottyLogs.length,
+      avgCatchesPerDay: effectiveDays > 0 ? Math.round((pottyLogs.length / effectiveDays) * 10) / 10 : 0,
+      locationDistribution: pottyLocationDistribution,
     },
     activity: {
       avgTummyTimePerDay,

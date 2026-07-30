@@ -25,7 +25,7 @@ async function getHandler(req: NextRequest): Promise<NextResponse<ApiResponse<Fa
     // Uses Prisma queries for cross-database compatibility (SQLite + PostgreSQL)
     const familyIds = families.map(f => f.id);
     const logModels = [
-      prisma.sleepLog, prisma.feedLog, prisma.diaperLog, prisma.moodLog,
+      prisma.sleepLog, prisma.feedLog, prisma.diaperLog, prisma.pottyLog, prisma.moodLog,
       prisma.note, prisma.bathLog, prisma.pumpLog, prisma.playLog,
       prisma.medicineLog, prisma.measurement,
     ] as const;

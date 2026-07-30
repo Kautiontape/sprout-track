@@ -63,6 +63,8 @@ const TimelineActivityDetails = ({
       }
       else if ('duration' in activity) onEdit(activity, 'sleep');
       else if ('amount' in activity) onEdit(activity, 'feed');
+      // Potty before diaper — both carry `type`, but only PottyLog has `pottyLocation`.
+      else if ('pottyLocation' in activity) onEdit(activity, 'potty');
       else if ('condition' in activity) onEdit(activity, 'diaper');
       else if ('doseAmount' in activity && 'medicineId' in activity) onEdit(activity, 'medicine');
       else if ('content' in activity) onEdit(activity, 'note');

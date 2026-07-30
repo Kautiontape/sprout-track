@@ -6,6 +6,7 @@ import { hookSuccess, hookError } from '../../../response';
 import { mergeFlipConfig } from '@/src/components/DayNightFlip/protocol';
 import { resolveNow } from '@/src/components/DayNightFlip/engine';
 import { deriveFacts } from '@/src/components/DayNightFlip/facts';
+import { latestElimination } from '@/src/lib/elimination';
 
 function minutesAgo(date: Date): number {
   return Math.floor((Date.now() - date.getTime()) / 60000);
@@ -73,9 +74,10 @@ async function handleGet(req: NextRequest, ctx: ApiKeyContext, routeContext: any
   const today = startOfTodayInTimezone(timezone);
 
   // Fetch last activities in parallel
-  const [lastFeed, lastDiaper, lastSleep, lastBath, lastMedicine, lastSupplement, lastPump] = await Promise.all([
+  const [lastFeed, lastDiaper, lastPotty, lastSleep, lastBath, lastMedicine, lastSupplement, lastPump] = await Promise.all([
     prisma.feedLog.findFirst({ where: { babyId, deletedAt: null }, orderBy: { time: 'desc' }, include: { caretaker: { select: { name: true } }, unit: { select: { unitAbbr: true } } } }),
     prisma.diaperLog.findFirst({ where: { babyId, deletedAt: null }, orderBy: { time: 'desc' }, include: { caretaker: { select: { name: true } } } }),
+    prisma.pottyLog.findFirst({ where: { babyId, deletedAt: null }, orderBy: { time: 'desc' }, include: { caretaker: { select: { name: true } } } }),
     prisma.sleepLog.findFirst({ where: { babyId, deletedAt: null }, orderBy: { startTime: 'desc' }, include: { caretaker: { select: { name: true } } } }),
     prisma.bathLog.findFirst({ where: { babyId, deletedAt: null }, orderBy: { time: 'desc' } }),
     prisma.medicineLog.findFirst({ where: { babyId, deletedAt: null, medicine: { isSupplement: false } }, orderBy: { time: 'desc' }, include: { medicine: { select: { name: true } } } }),
@@ -84,9 +86,10 @@ async function handleGet(req: NextRequest, ctx: ApiKeyContext, routeContext: any
   ]);
 
   // Fetch daily counts in parallel
-  const [feedCount, diapers, sleepLogs, bathCount, medicineCount, supplementCount] = await Promise.all([
+  const [feedCount, diapers, pottyCatches, sleepLogs, bathCount, medicineCount, supplementCount] = await Promise.all([
     prisma.feedLog.count({ where: { babyId, deletedAt: null, time: { gte: today } } }),
     prisma.diaperLog.findMany({ where: { babyId, deletedAt: null, time: { gte: today } }, select: { type: true } }),
+    prisma.pottyLog.count({ where: { babyId, deletedAt: null, time: { gte: today } } }),
     prisma.sleepLog.findMany({
       where: {
         babyId,
@@ -119,7 +122,10 @@ async function handleGet(req: NextRequest, ctx: ApiKeyContext, routeContext: any
 
   // Warnings
   const feedTime = lastFeed?.time;
-  const diaperTime = lastDiaper?.time;
+  // A potty catch means the diaper stayed clean, so the "diaper" warning timer
+  // (field names kept for API backward-compatibility) is fed by whichever of
+  // diaper/potty happened most recently — same rule the in-app status bubble uses.
+  const elimination = latestElimination(lastDiaper?.time ?? null, lastPotty?.time ?? null);
 
   function parseWarningMinutes(warnTime: string | null | undefined): number | null {
     if (!warnTime) return null;
@@ -132,7 +138,7 @@ async function handleGet(req: NextRequest, ctx: ApiKeyContext, routeContext: any
   const diaperWarnMins = parseWarningMinutes(baby?.diaperWarningTime);
 
   const feedMinsAgo = feedTime ? minutesAgo(feedTime) : null;
-  const diaperMinsAgo = diaperTime ? minutesAgo(diaperTime) : null;
+  const diaperMinsAgo = elimination ? minutesAgo(elimination.time) : null;
 
   const feedOverdue = feedWarnMins !== null && feedMinsAgo !== null && feedMinsAgo > feedWarnMins;
   const diaperOverdue = diaperWarnMins !== null && diaperMinsAgo !== null && diaperMinsAgo > diaperWarnMins;
@@ -146,12 +152,19 @@ async function handleGet(req: NextRequest, ctx: ApiKeyContext, routeContext: any
   let dayNightFlip: Record<string, unknown> = { enabled: false };
   if (baby && flipConfig.enabled) {
     const nowDate = new Date();
-    const [flipSleeps, flipDiapers, flipWeights] = await Promise.all([
+    const [flipSleeps, flipDiapers, flipPotty, flipWeights] = await Promise.all([
       prisma.sleepLog.findMany({
         where: { babyId, deletedAt: null, startTime: { gte: new Date(nowDate.getTime() - 7 * 86400000) } },
         select: { startTime: true, endTime: true },
       }),
       prisma.diaperLog.findMany({
+        where: { babyId, deletedAt: null, time: { gte: new Date(nowDate.getTime() - 24 * 3600000) } },
+        select: { time: true, type: true },
+      }),
+      // Potty catches feed the same hydration signal as diaper logs — see the
+      // comment on wetDiapersLast24h in facts.ts. Without this, the public
+      // status API would false-alarm the R-42-wet escalation for EC families.
+      prisma.pottyLog.findMany({
         where: { babyId, deletedAt: null, time: { gte: new Date(nowDate.getTime() - 24 * 3600000) } },
         select: { time: true, type: true },
       }),
@@ -165,6 +178,7 @@ async function handleGet(req: NextRequest, ctx: ApiKeyContext, routeContext: any
       sleepLogs: flipSleeps.map(s => ({ startTime: s.startTime.toISOString(), endTime: s.endTime?.toISOString() ?? null })),
       lastFeed: lastFeed ? { time: lastFeed.time.toISOString(), endTime: lastFeed.endTime?.toISOString() ?? null } : null,
       diaperLogs: flipDiapers.map(d => ({ time: d.time.toISOString(), type: d.type as 'WET' | 'DIRTY' | 'BOTH' })),
+      pottyLogs: flipPotty.map(d => ({ time: d.time.toISOString(), type: d.type as 'WET' | 'DIRTY' | 'BOTH' })),
       weights: flipWeights.map(w => ({ date: w.date.toISOString(), value: w.value, unit: w.unit })),
       birthDate: baby.birthDate.toISOString(),
     }, null, nowDate);
@@ -211,6 +225,15 @@ async function handleGet(req: NextRequest, ctx: ApiKeyContext, routeContext: any
       type: lastDiaper.type,
       caretakerName: lastDiaper.caretaker?.name || null,
     } : null,
+    // A sibling of `diaper`, never merged into diaper counts — see dailyCounts.pottyCatches.
+    potty: lastPotty ? {
+      id: lastPotty.id,
+      time: lastPotty.time.toISOString(),
+      minutesAgo: minutesAgo(lastPotty.time),
+      type: lastPotty.type,
+      pottyLocation: lastPotty.pottyLocation,
+      caretakerName: lastPotty.caretaker?.name || null,
+    } : null,
     sleep: lastSleep ? {
       id: lastSleep.id,
       startTime: lastSleep.startTime.toISOString(),
@@ -255,6 +278,7 @@ async function handleGet(req: NextRequest, ctx: ApiKeyContext, routeContext: any
       feeds: feedCount,
       diapers: diapers.length,
       diapersByType,
+      pottyCatches,
       sleepMinutes,
       naps,
       baths: bathCount,

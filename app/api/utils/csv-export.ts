@@ -103,6 +103,7 @@ export async function createDataExport(exportData: {
   sleepLogs?: any[];
   feedLogs?: any[];
   diaperLogs?: any[];
+  pottyLogs?: any[];
   moodLogs?: any[];
   notes?: any[];
   milestones?: any[];
@@ -136,6 +137,7 @@ export async function createDataExport(exportData: {
     { key: 'sleepLogs', filename: 'sleep-logs.csv' },
     { key: 'feedLogs', filename: 'feed-logs.csv' },
     { key: 'diaperLogs', filename: 'diaper-logs.csv' },
+    { key: 'pottyLogs', filename: 'potty-logs.csv' },
     { key: 'moodLogs', filename: 'mood-logs.csv' },
     { key: 'notes', filename: 'notes.csv' },
     { key: 'milestones', filename: 'milestones.csv' },

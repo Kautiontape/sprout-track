@@ -12,3 +12,7 @@ html.dark .activity-tile-label {
 html.dark .activity-tile-description {
   color: #e5e7eb; /* gray-200 */
 }
+
+html.dark .activity-tile-icon-potty {
+  color: rgb(240 171 252);
+}

@@ -48,6 +48,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
       sleepLogs,
       feedLogs,
       diaperLogs,
+      pottyLogs,
       moodLogs,
       notes,
       milestones,
@@ -66,6 +67,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
       prisma.sleepLog.findMany({ where: { familyId }, include: { baby: { select: { firstName: true, lastName: true } }, caretaker: { select: { name: true } } } }),
       prisma.feedLog.findMany({ where: { familyId }, include: { baby: { select: { firstName: true, lastName: true } }, caretaker: { select: { name: true } } } }),
       prisma.diaperLog.findMany({ where: { familyId }, include: { baby: { select: { firstName: true, lastName: true } }, caretaker: { select: { name: true } } } }),
+      prisma.pottyLog.findMany({ where: { familyId }, include: { baby: { select: { firstName: true, lastName: true } }, caretaker: { select: { name: true } } } }),
       prisma.moodLog.findMany({ where: { familyId }, include: { baby: { select: { firstName: true, lastName: true } }, caretaker: { select: { name: true } } } }),
       prisma.note.findMany({ where: { familyId }, include: { baby: { select: { firstName: true, lastName: true } }, caretaker: { select: { name: true } } } }),
       prisma.milestone.findMany({ where: { familyId }, include: { baby: { select: { firstName: true, lastName: true } }, caretaker: { select: { name: true } } } }),
@@ -98,6 +100,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
         sleepLogs: sleepLogs.length,
         feedLogs: feedLogs.length,
         diaperLogs: diaperLogs.length,
+        pottyLogs: pottyLogs.length,
         moodLogs: moodLogs.length,
         notes: notes.length,
         milestones: milestones.length,
@@ -135,6 +138,13 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
         ...d,
         babyName: d.baby ? `${d.baby.firstName} ${d.baby.lastName}` : '',
         caretakerName: d.caretaker?.name || '',
+        baby: undefined,
+        caretaker: undefined
+      })),
+      pottyLogs: pottyLogs.map(p => ({
+        ...p,
+        babyName: p.baby ? `${p.baby.firstName} ${p.baby.lastName}` : '',
+        caretakerName: p.caretaker?.name || '',
         baby: undefined,
         caretaker: undefined
       })),

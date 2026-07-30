@@ -21,7 +21,8 @@ import {
   Baby,
   Plus,
   Minus,
-  Syringe
+  Syringe,
+  Toilet
 } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
 import { 
@@ -61,6 +62,10 @@ const isPlayActivity = (activity: any): boolean => {
   return 'activities' in activity && 'type' in activity && PLAY_TYPES.includes(activity.type);
 };
 
+// PottyLog reuses DiaperType (WET/DIRTY/BOTH) but labels them Pee/Poop/Both.
+const pottyTypeLabel = (type: string, t: (key: string) => string): string =>
+  type === 'WET' ? t('Pee') : type === 'DIRTY' ? t('Poop') : t('Pee and Poop');
+
 export const getActivityIcon = (activity: ActivityType) => {
   // Play activity - check before sleep since both have duration and type
   if (isPlayActivity(activity)) {
@@ -91,6 +96,9 @@ export const getActivityIcon = (activity: ActivityType) => {
     }
     if ('amount' in activity) {
       return <Icon iconNode={bottleBaby} className="h-4 w-4 text-gray-700" />; // Feed activity
+    }
+    if ('pottyLocation' in activity) {
+      return <Toilet className="h-4 w-4 text-white" />; // Potty activity
     }
     if ('condition' in activity) {
       return <Icon iconNode={diaper} className="h-4 w-4 text-white" />; // Diaper activity
@@ -367,6 +375,24 @@ export const getActivityDetails = (activity: ActivityType, settings: Settings | 
 
       return {
         title: t('Feed Record'),
+        details: [...details, ...caretakerDetail],
+      };
+    }
+    if ('pottyLocation' in activity) {
+      const details = [
+        { label: t('Time'), value: formatTime(activity.time, settings, true, t) },
+        { label: t('Type'), value: pottyTypeLabel(activity.type, t) },
+      ];
+
+      if ((activity as any).pottyLocation) {
+        details.push({ label: t('Where'), value: t((activity as any).pottyLocation) });
+      }
+      if ((activity as any).notes) {
+        details.push({ label: t('Notes'), value: (activity as any).notes });
+      }
+
+      return {
+        title: t('Potty Record'),
         details: [...details, ...caretakerDetail],
       };
     }
@@ -792,6 +818,18 @@ export const getActivityDescription = (activity: ActivityType, settings: Setting
         details: [time, details, notes].filter(Boolean).join(' • ')
       };
     }
+    if ('pottyLocation' in activity) {
+      const time = formatTime(activity.time, settings, true, t);
+      const location = (activity as any).pottyLocation ? t((activity as any).pottyLocation) : '';
+      let notes: string = (activity as any).notes ?? '';
+      if (notes.length > 30) {
+        notes = notes.slice(0, 30) + '...';
+      }
+      return {
+        type: pottyTypeLabel(activity.type, t),
+        details: [time, location, notes].filter(Boolean).join(' • ')
+      };
+    }
     if ('condition' in activity) {
       const formatDiaperType = (type: string) => {
         switch (type) {
@@ -1013,6 +1051,7 @@ export const getActivityEndpoint = (activity: ActivityType): string => {
   if ('leftAmount' in activity || 'rightAmount' in activity) return 'pump-log';
   if ('duration' in activity) return 'sleep-log';
   if ('amount' in activity) return 'feed-log';
+  if ('pottyLocation' in activity) return 'potty-log';
   if ('condition' in activity) return 'diaper-log';
   if ('doseAmount' in activity && 'medicineId' in activity) return 'medicine-log';
   if ('content' in activity) return 'note';
@@ -1061,6 +1100,15 @@ export const getActivityStyle = (activity: ActivityType): ActivityStyle => {
       return {
         bg: 'bg-sky-200',
         textColor: 'text-gray-700',
+      };
+    }
+    if ('pottyLocation' in activity) {
+      return {
+        // Fuchsia deliberately: potty must be unmistakable against diaper (teal)
+        // — the one pair users need to tell apart at a glance — and against
+        // feed (sky), which an earlier sky choice sat right next to.
+        bg: 'bg-gradient-to-r from-fuchsia-500 to-fuchsia-600',
+        textColor: 'text-white',
       };
     }
     if ('condition' in activity) {

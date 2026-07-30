@@ -14,6 +14,7 @@ import { ActivityTileGroup } from '@/src/components/ActivityTileGroup';
 import SleepForm from '@/src/components/forms/SleepForm';
 import FeedForm from '@/src/components/forms/FeedForm';
 import DiaperForm from '@/src/components/forms/DiaperForm';
+import PottyForm from '@/src/components/forms/PottyForm';
 import NoteForm from '@/src/components/forms/NoteForm';
 import BathForm from '@/src/components/forms/BathForm';
 import PumpForm from '@/src/components/forms/PumpForm';
@@ -37,6 +38,7 @@ function HomeContent(): React.ReactElement {
   const [showSleepModal, setShowSleepModal] = useState(false);
   const [showFeedModal, setShowFeedModal] = useState(false);
   const [showDiaperModal, setShowDiaperModal] = useState(false);
+  const [showPottyForm, setShowPottyForm] = useState(false);
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [showBathModal, setShowBathModal] = useState(false);
   const [showPumpModal, setShowPumpModal] = useState(false);
@@ -457,6 +459,7 @@ function HomeContent(): React.ReactElement {
             setShowFeedModal(true);
           }}
           onDiaperClick={() => setShowDiaperModal(true)}
+          onPottyClick={() => setShowPottyForm(true)}
           onNoteClick={() => setShowNoteModal(true)}
           onBathClick={() => setShowBathModal(true)}
           onPumpClick={() => setShowPumpModal(true)}
@@ -623,7 +626,22 @@ function HomeContent(): React.ReactElement {
           }
         }}
       />
-      
+
+      {/* Potty Form */}
+      <PottyForm
+        isOpen={showPottyForm}
+        onClose={() => {
+          setShowPottyForm(false);
+        }}
+        babyId={selectedBaby?.id || ''}
+        initialTime={localTime}
+        onSuccess={() => {
+          if (selectedBaby?.id) {
+            triggerRefresh();
+          }
+        }}
+      />
+
       {/* Note Form */}
       <NoteForm
         isOpen={showNoteModal}

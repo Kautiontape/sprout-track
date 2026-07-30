@@ -6,7 +6,7 @@ const NOW = new Date('2026-06-11T15:00:00');
 const iso = (s: string) => new Date(s).toISOString();
 
 const EMPTY: RawActivityData = {
-  sleepLogs: [], lastFeed: null, diaperLogs: [], weights: [],
+  sleepLogs: [], lastFeed: null, diaperLogs: [], pottyLogs: [], weights: [],
   birthDate: iso('2026-05-14T12:00:00'),
 };
 
@@ -68,6 +68,52 @@ test('diapers count in trailing 24h; BOTH counts as wet and dirty; no data -> nu
   assert.equal(f.wetDiapersLast24h, 2);   // WET + BOTH
   assert.equal(f.dirtyDiapersLast24h, 2); // DIRTY + BOTH
   assert.equal(deriveFacts(EMPTY, null, NOW).wetDiapersLast24h, null);
+});
+
+// wetDiapersLast24h/dirtyDiapersLast24h are a HYDRATION SIGNAL (urine/stool
+// output), not a diaper-usage statistic — a potty catch is still a void. This
+// is deliberately different from diaper *counts* shown in daily stats/reports,
+// where a potty catch must never be counted as a diaper (see src/lib/elimination.ts
+// for the sibling case of mixing the two sources).
+test('EC family: potty catches count toward wet/dirty totals alongside diaper logs', () => {
+  const raw: RawActivityData = {
+    ...EMPTY,
+    diaperLogs: [
+      { time: iso('2026-06-11T09:00:00'), type: 'WET' },
+      { time: iso('2026-06-11T07:00:00'), type: 'WET' },
+      { time: iso('2026-06-11T05:00:00'), type: 'DIRTY' },
+    ],
+    pottyLogs: [
+      { time: iso('2026-06-11T11:00:00'), type: 'WET' },
+      { time: iso('2026-06-11T13:00:00'), type: 'BOTH' },
+      { time: iso('2026-06-09T10:00:00'), type: 'WET' }, // outside 24h
+    ],
+  };
+  const f = deriveFacts(raw, null, NOW);
+  // wet: 2 diaper WET + 1 potty WET + 1 potty BOTH = 4
+  assert.equal(f.wetDiapersLast24h, 4);
+  // dirty: 1 diaper DIRTY + 1 potty BOTH = 2
+  assert.equal(f.dirtyDiapersLast24h, 2);
+});
+
+test('potty-only family (zero diaper logs) gets a real count, not null', () => {
+  const raw: RawActivityData = {
+    ...EMPTY,
+    diaperLogs: [],
+    pottyLogs: [
+      { time: iso('2026-06-11T10:00:00'), type: 'WET' },
+      { time: iso('2026-06-11T08:00:00'), type: 'BOTH' },
+    ],
+  };
+  const f = deriveFacts(raw, null, NOW);
+  assert.equal(f.wetDiapersLast24h, 2);
+  assert.equal(f.dirtyDiapersLast24h, 1);
+});
+
+test('neither diapers nor potty logged at all -> null, not zero', () => {
+  const f = deriveFacts(EMPTY, null, NOW);
+  assert.equal(f.wetDiapersLast24h, null);
+  assert.equal(f.dirtyDiapersLast24h, null);
 });
 
 test('two most recent parseable weights, normalized to oz', () => {

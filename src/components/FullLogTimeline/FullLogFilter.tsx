@@ -15,6 +15,7 @@ import {
   PillBottle,
   Baby,
   Syringe,
+  Toilet,
 } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
 import { FilterType, FullLogFilterProps } from './full-log-timeline.types';
@@ -63,6 +64,7 @@ const FullLogFilter: React.FC<FullLogFilterProps> = ({
     { type: 'sleep', icon: <Moon className="h-4 w-4" />, labelKey: 'Sleep' },
     { type: 'feed', icon: <Icon iconNode={bottleBaby} className="h-4 w-4" />, labelKey: 'Feed' },
     { type: 'diaper', icon: <Icon iconNode={diaper} className="h-4 w-4" />, labelKey: 'Diaper' },
+    { type: 'potty', icon: <Toilet className="h-4 w-4" />, labelKey: 'Potty' },
     { type: 'bath', icon: <Bath className="h-4 w-4" />, labelKey: 'Bath' },
     { type: 'note', icon: <Edit className="h-4 w-4" />, labelKey: 'Note' },
     { type: 'pump', icon: <LampWallDown className="h-4 w-4" />, labelKey: 'Pump' },

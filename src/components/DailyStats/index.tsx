@@ -266,9 +266,11 @@ export const DailyStats: React.FC<DailyStatsProps> = ({ activities, date, isLoad
         }
       }
       
-      // Potty activities — checked before diapers: a PottyLog carries `type` just
-      // like a DiaperLog but never `condition`, so a potty catch can never reach
-      // the diaper branch below. Keep this discriminator ahead of it regardless.
+      // Potty activities. A PottyLog carries `type` just like a DiaperLog but never
+      // `condition`, so today the two are already disjoint. The `else if` on the
+      // diaper branch below makes that structural rather than incidental: if a record
+      // ever carried both fields, it would count once as potty instead of inflating
+      // the diaper counts. A potty catch must never increment a diaper count.
       if ('pottyLocation' in activity) {
         const time = new Date(activity.time);
 
@@ -277,9 +279,8 @@ export const DailyStats: React.FC<DailyStatsProps> = ({ activities, date, isLoad
           pottyCount++;
         }
       }
-
       // Diaper activities
-      if ('condition' in activity && 'type' in activity) {
+      else if ('condition' in activity && 'type' in activity) {
         const time = new Date(activity.time);
 
         // Only count diapers that occurred on the selected day

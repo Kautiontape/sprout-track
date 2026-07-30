@@ -19,7 +19,7 @@ export default function EscalationBanner({ state }: { state: FlipState }) {
       <details className={s.escalation.reference}>
         <summary className="cursor-pointer">{t('Call your pediatrician if…')}</summary>
         <ul className="list-disc ml-5 mt-1 space-y-0.5">
-          <li>{t('Fewer than 6 wet diapers a day, or no weight gain')}</li>
+          <li>{t('Fewer than 6 wet diapers or potty catches a day, or no weight gain')}</li>
           <li>{t('Lethargy, or persistent frantic feeding')}</li>
           <li>{t('Feeding becomes a struggle (same-day call)')}</li>
           <li>{t('Constant gas battle with arching and hard mid-feed crying across days')}</li>

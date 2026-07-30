@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { Grid3X3, Loader2, Moon, Sun, BedDouble } from 'lucide-react';
+import { Grid3X3, Loader2, Moon, Sun, BedDouble, Toilet } from 'lucide-react';
 import { Icon } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
 import { LampWallDown } from 'lucide-react';
@@ -25,7 +25,7 @@ const LANE_WIDTH = 20;
 const LANE_GAP = 2;
 
 const DISPLAYED_HEATMAP_TYPES: HeatmapType[] = [
-  'wakeTime', 'bedtime', 'allSleep', 'feeds', 'diapers', 'pumps',
+  'wakeTime', 'bedtime', 'allSleep', 'feeds', 'potty', 'diapers', 'pumps',
 ];
 
 const HEATMAP_ICONS: Record<HeatmapType, { icon: any; isLabIcon?: boolean }> = {
@@ -34,6 +34,7 @@ const HEATMAP_ICONS: Record<HeatmapType, { icon: any; isLabIcon?: boolean }> = {
   naps: { icon: BedDouble },
   allSleep: { icon: Moon },
   feeds: { icon: bottleBaby, isLabIcon: true },
+  potty: { icon: Toilet },
   diapers: { icon: diaper, isLabIcon: true },
   pumps: { icon: LampWallDown },
 };
@@ -44,6 +45,7 @@ const HEATMAP_LABELS: Record<HeatmapType, string> = {
   naps: 'Naps',
   allSleep: 'Sleep',
   feeds: 'Feeds',
+  potty: 'Potty',
   diapers: 'Diapers',
   pumps: 'Pumps',
 };

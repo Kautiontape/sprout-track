@@ -4,7 +4,7 @@ import { ActivityType } from '../types';
 export const TIME_SLOTS = 288; // 5-minute slots
 export const SLOT_MINUTES = 5;
 
-export type HeatmapType = 'wakeTime' | 'bedtime' | 'naps' | 'allSleep' | 'feeds' | 'diapers' | 'pumps';
+export type HeatmapType = 'wakeTime' | 'bedtime' | 'naps' | 'allSleep' | 'feeds' | 'potty' | 'diapers' | 'pumps';
 
 export const HEATMAP_TYPES_IN_ORDER: HeatmapType[] = [
   'wakeTime',
@@ -12,6 +12,7 @@ export const HEATMAP_TYPES_IN_ORDER: HeatmapType[] = [
   'naps',
   'allSleep',
   'feeds',
+  'potty',
   'diapers',
   'pumps',
 ];
@@ -23,6 +24,7 @@ export const HEATMAP_COLORS: Record<HeatmapType, { base: string; light: string }
   naps: { base: '#6b7280', light: '#f3f4f6' },          // gray - sleep
   allSleep: { base: '#6b7280', light: '#f3f4f6' },      // gray - sleep
   feeds: { base: '#7dd3fc', light: '#e0f2fe' },         // sky - feed
+  potty: { base: '#d946ef', light: '#f0abfc' },         // fuchsia - potty
   diapers: { base: '#0d9488', light: '#ccfbf1' },       // teal - diaper
   pumps: { base: '#c084fc', light: '#f3e8ff' },         // purple - pump
 };
@@ -92,6 +94,7 @@ export const buildHeatmapDataForActivities = (activities: ActivityType[]): Heatm
     naps: new Array(TIME_SLOTS).fill(0),
     allSleep: new Array(TIME_SLOTS).fill(0),
     feeds: new Array(TIME_SLOTS).fill(0),
+    potty: new Array(TIME_SLOTS).fill(0),
     diapers: new Array(TIME_SLOTS).fill(0),
     pumps: new Array(TIME_SLOTS).fill(0),
   };
@@ -180,6 +183,20 @@ export const buildHeatmapDataForActivities = (activities: ActivityType[]): Heatm
       const feedEnd = Math.min(24, feedHours + 30/60);
       for (let slot = timeToSlot(feedStart); slot <= timeToSlot(feedEnd); slot++) {
         slotCounts.feeds[slot]++;
+      }
+    }
+
+    // Potty activities (must be checked before diapers - both carry `type`,
+    // only PottyLog carries `pottyLocation`)
+    if ('pottyLocation' in activity && 'type' in activity && 'time' in activity) {
+      const pottyTime = new Date(activity.time);
+      const pottyHours = getHours(pottyTime);
+
+      // ±30 min window
+      const pottyStart = Math.max(0, pottyHours - 30/60);
+      const pottyEnd = Math.min(24, pottyHours + 30/60);
+      for (let slot = timeToSlot(pottyStart); slot <= timeToSlot(pottyEnd); slot++) {
+        slotCounts.potty[slot]++;
       }
     }
 

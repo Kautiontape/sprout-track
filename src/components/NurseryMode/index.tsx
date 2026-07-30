@@ -717,7 +717,9 @@ export function NurseryMode() {
       setEditKind('diaper');
     } else if (kind === 'potty' && lastPotty) {
       setEditPottyType(lastPotty.type);
-      setEditPottyLocation(lastPotty.pottyLocation || POTTY_LOCATIONS[0]);
+      // Empty, not a default: a record logged without a receptacle must not gain
+      // a fabricated one just because someone opened the sheet and hit Save.
+      setEditPottyLocation(lastPotty.pottyLocation || '');
       setEditTime(fmtHM(lastPotty.time));
       setEditKind('potty');
     }
@@ -750,7 +752,7 @@ export function NurseryMode() {
         await api(`/api/diaper-log?id=${lastDiaper.id}`, { method: 'PUT', body: JSON.stringify(body) });
         pushToast(t('Saved'), 'ok', { ms: 2000 });
       } else if (editKind === 'potty' && lastPotty) {
-        const body = { time: hmToIso(editTime), type: editPottyType, pottyLocation: editPottyLocation };
+        const body = { time: hmToIso(editTime), type: editPottyType, pottyLocation: editPottyLocation || null };
         await api(`/api/potty-log?id=${lastPotty.id}`, { method: 'PUT', body: JSON.stringify(body) });
         pushToast(t('Saved'), 'ok', { ms: 2000 });
       }
@@ -856,6 +858,8 @@ export function NurseryMode() {
 
   const babyName = selectedBaby?.firstName || babies[0]?.firstName || '';
   const hasMultipleBabies = babies.length > 1;
+  // Whichever elimination happened last — a potty catch means the diaper stayed clean.
+  const latestElim = latestElimination(lastDiaper?.time ?? null, lastPotty?.time ?? null);
 
   return (
     <div className="nursery-kiosk">
@@ -897,19 +901,15 @@ export function NurseryMode() {
             {t('fed')} {fmtAgo(lastFeed.time)}
           </button>
         )}
-        {(() => {
-          const latest = latestElimination(lastDiaper?.time ?? null, lastPotty?.time ?? null);
-          if (!latest) return null;
-          return (
-            <button
-              type="button"
-              className="nk-badge"
-              onClick={() => openEdit(latest.source)}
-            >
-              {latest.source === 'potty' ? t('potty') : t('diaper')} {fmtAgo(latest.time.getTime())}
-            </button>
-          );
-        })()}
+        {latestElim && (
+          <button
+            type="button"
+            className="nk-badge"
+            onClick={() => openEdit(latestElim.source)}
+          >
+            {latestElim.source === 'potty' ? t('potty') : t('diaper')} {fmtAgo(latestElim.time.getTime())}
+          </button>
+        )}
       </div>
 
       <h2 className="nk-h2">{t('Feed')}</h2>
@@ -1054,7 +1054,10 @@ export function NurseryMode() {
             <div className="nk-field">
               <label>{t('Where')}</label>
               <div className="nk-types">
-                {POTTY_LOCATIONS.filter(loc => !pottyHidden.includes(loc)).map(loc => (
+                {/* `|| pottyLocation === loc` keeps the sticky selection visible if that
+                    receptacle was hidden after this device last used it — otherwise the
+                    chip row would show nothing selected while state still held it. */}
+                {POTTY_LOCATIONS.filter(loc => !pottyHidden.includes(loc) || pottyLocation === loc).map(loc => (
                   <button
                     key={loc}
                     type="button"

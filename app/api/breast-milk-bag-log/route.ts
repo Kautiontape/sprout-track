@@ -18,7 +18,10 @@ const format = (log: any): BreastMilkBagLogResponse => ({
  * the derived volume meaningless. Reject both rather than storing a row that no
  * downstream reader can interpret.
  */
-function validate(body: Partial<BreastMilkBagLogCreate>): string | null {
+function validate(body: Partial<BreastMilkBagLogCreate>, requireAll: boolean): string | null {
+  if (requireAll && (body.bagCount === undefined || body.amountPerBag === undefined)) {
+    return 'Bag count and amount per bag are required';
+  }
   if (body.bagCount !== undefined) {
     if (!Number.isInteger(body.bagCount) || body.bagCount === 0) {
       return 'Bag count must be a non-zero whole number';
@@ -46,7 +49,7 @@ async function handlePost(req: NextRequest, authContext: AuthResult) {
 
     const body: BreastMilkBagLogCreate = await req.json();
 
-    const validationError = validate(body);
+    const validationError = validate(body, true);
     if (validationError) {
       return NextResponse.json<ApiResponse<null>>({ success: false, error: validationError }, { status: 400 });
     }
@@ -59,10 +62,18 @@ async function handlePost(req: NextRequest, authContext: AuthResult) {
       return NextResponse.json<ApiResponse<null>>({ success: false, error: 'Baby not found in this family.' }, { status: 404 });
     }
 
+    // Fields are named explicitly rather than spread from `body`: TS types are
+    // erased at runtime, so a spread would let a client set `id`, `deletedAt`,
+    // or `createdAt`. Mirrors app/api/breast-milk-adjustment/route.ts.
     const bagLog = await prisma.breastMilkBagLog.create({
       data: {
-        ...body,
+        babyId: body.babyId,
         time: toUTC(body.time),
+        bagCount: body.bagCount,
+        amountPerBag: body.amountPerBag,
+        unitAbbr: body.unitAbbr,
+        reason: body.reason ?? null,
+        notes: body.notes ?? null,
         caretakerId: caretakerId,
         familyId: userFamilyId,
       },
@@ -101,7 +112,7 @@ async function handlePut(req: NextRequest, authContext: AuthResult) {
       );
     }
 
-    const validationError = validate(body);
+    const validationError = validate(body, false);
     if (validationError) {
       return NextResponse.json<ApiResponse<null>>({ success: false, error: validationError }, { status: 400 });
     }
@@ -117,13 +128,16 @@ async function handlePut(req: NextRequest, authContext: AuthResult) {
       );
     }
 
-    const data: any = { ...body };
-    if (body.time) {
-      data.time = toUTC(body.time);
-    }
-    delete data.babyId;
-    delete data.familyId;
-    delete data.caretakerId;
+    // Built field-by-field rather than spread, so unlisted columns (`id`,
+    // `deletedAt`, `createdAt`) can't be set by a client, and `babyId`/
+    // `familyId`/`caretakerId` can't be used to re-parent the row.
+    const data: any = {};
+    if (body.time !== undefined) data.time = toUTC(body.time);
+    if (body.bagCount !== undefined) data.bagCount = body.bagCount;
+    if (body.amountPerBag !== undefined) data.amountPerBag = body.amountPerBag;
+    if (body.unitAbbr !== undefined) data.unitAbbr = body.unitAbbr;
+    if (body.reason !== undefined) data.reason = body.reason;
+    if (body.notes !== undefined) data.notes = body.notes;
 
     const bagLog = await prisma.breastMilkBagLog.update({ where: { id }, data });
 

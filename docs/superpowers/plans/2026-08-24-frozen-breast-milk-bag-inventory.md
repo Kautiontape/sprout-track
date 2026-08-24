@@ -359,11 +359,13 @@ export function sumBagsForDay(
   const frozen = live.filter((row) => row.bagCount > 0);
   const removed = live.filter((row) => row.bagCount < 0);
 
+  // Negate per-term rather than negating the whole reduce: `-reduce(...)` over an
+  // empty array produces -0, and Vitest's toEqual distinguishes -0 from 0.
   return {
     frozenBags: frozen.reduce((total, row) => total + row.bagCount, 0),
     frozenAmount: round2(frozen.reduce((total, row) => total + rowVolume(row, targetUnit), 0)),
-    removedBags: -removed.reduce((total, row) => total + row.bagCount, 0),
-    removedAmount: round2(-removed.reduce((total, row) => total + rowVolume(row, targetUnit), 0)),
+    removedBags: removed.reduce((total, row) => total - row.bagCount, 0),
+    removedAmount: round2(removed.reduce((total, row) => total - rowVolume(row, targetUnit), 0)),
   };
 }
 
@@ -439,7 +441,7 @@ export function projectDaysOfSupply(
 
 Run: `npx vitest run tests/breastMilkBags.test.ts`
 
-Expected: PASS, 21 tests.
+Expected: PASS, 22 tests.
 
 - [ ] **Step 5: Run the whole suite to confirm nothing regressed**
 

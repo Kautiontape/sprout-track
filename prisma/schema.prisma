@@ -217,6 +217,7 @@ model Family {
   deviceTokens   DeviceToken[]
   notificationPreferences NotificationPreference[]
   breastMilkAdjustments BreastMilkAdjustment[]
+  breastMilkBagLogs BreastMilkBagLog[]
   activeBreastFeeds ActiveBreastFeed[]
   activeActivities  ActiveActivity[]
   vaccineLogs    VaccineLog[]
@@ -279,6 +280,7 @@ model Baby {
   medicineLogs MedicineLog[] // New relationship for medicine logs
   notificationPreferences NotificationPreference[]
   breastMilkAdjustments BreastMilkAdjustment[]
+  breastMilkBagLogs BreastMilkBagLog[]
   activeBreastFeed ActiveBreastFeed?
   activeActivity   ActiveActivity?
   vaccineLogs  VaccineLog[]
@@ -337,6 +339,7 @@ model Caretaker {
   deviceTokens  DeviceToken[]
   notificationPreferences NotificationPreference[]
   breastMilkAdjustments BreastMilkAdjustment[]
+  breastMilkBagLogs BreastMilkBagLog[]
   activeBreastFeeds ActiveBreastFeed[]
   activeActivities  ActiveActivity[]
   vaccineLogs   VaccineLog[]
@@ -744,6 +747,35 @@ model BreastMilkAdjustment {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
+
+  // Add family relation
+  family   Family? @relation(fields: [familyId], references: [id])
+  familyId String? // Nullable initially for migration
+
+  // Relationships
+  baby        Baby       @relation(fields: [babyId], references: [id], onDelete: Cascade)
+  babyId      String
+  caretaker   Caretaker? @relation(fields: [caretakerId], references: [id])
+  caretakerId String?
+
+  @@index([time])
+  @@index([babyId])
+  @@index([caretakerId])
+  @@index([deletedAt])
+  @@index([familyId])
+}
+
+model BreastMilkBagLog {
+  id           String    @id @default(uuid())
+  time         DateTime
+  bagCount     Int // Signed: positive = bags frozen, negative = bags removed
+  amountPerBag Float // Volume of ONE bag, in unitAbbr; always positive
+  unitAbbr     String? // "OZ" | "ML"
+  reason       String? // Removals: "Fed" | "Discarded" | "Donated" | "Other". Additions: "Initial Stock" | null
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
   // Add family relation
   family   Family? @relation(fields: [familyId], references: [id])

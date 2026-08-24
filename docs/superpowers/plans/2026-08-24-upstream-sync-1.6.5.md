@@ -1369,6 +1369,41 @@ Walk all four of our features plus the headline upstream ones:
 
 Stop the dev server. Delete any test entries created.
 
+- [ ] **Step 4b: Dry-run the startup data converter**
+
+Prisma migrations are not the only thing that mutates production data on deploy.
+`docker-startup.sh:130` runs `node scripts/convert-solids-feeds.js` on **every**
+container start, and the same code runs from `/api/database/migrate*` after a backup
+restore. It is not a Prisma migration, so the migration dry-runs in the rung tasks
+never exercise it.
+
+Unlike the Prisma CLI, this script honours `DATABASE_URL` — it passes a `datasources`
+override to `PrismaClient` when the variable is set. Point it at the scratch copy with
+an **absolute** path:
+
+```bash
+md5sum db/baby-tracker.db
+sqlite3 db/sync-test.db "SELECT activitySettings FROM Settings WHERE activitySettings IS NOT NULL;"
+DATABASE_URL="file:$(pwd)/db/sync-test.db" node scripts/convert-solids-feeds.js
+sqlite3 db/sync-test.db "SELECT activitySettings FROM Settings WHERE activitySettings IS NOT NULL;"
+sqlite3 db/sync-test.db "SELECT 'potty', COUNT(*) FROM PottyLog UNION ALL SELECT 'feed', COUNT(*) FROM FeedLog UNION ALL SELECT 'food', COUNT(*) FROM FoodLog;"
+md5sum db/baby-tracker.db
+```
+
+Expected, verified 2026-08-24 against the production snapshot:
+
+- Output reads `no SOLIDS feeds found, nothing to do. Food tile placed for 1 caretaker setting(s).`
+- `activitySettings` gains `"food"` spliced into `order` directly after `"feed"`, and
+  appended to `visible`. **`"potty"` keeps its position relative to `"diaper"`** — its
+  index shifts by one, nothing more.
+- Row counts unchanged: potty **24**, feed **701**, food **0**.
+- The two `md5sum` values match, proving `db/baby-tracker.db` was never opened.
+
+**Consequence for cutover:** on the first boot after deploy a **Food tile appears on
+the log-entry screen, visible by default**. That is the only change this release makes
+to live data for this family — there are no SOLIDS feeds to convert. Hiding the tile
+is a manual toggle in settings afterwards; the merge cannot pre-empt it.
+
 - [ ] **Step 5: Verify the Docker image builds**
 
 The ktn deploy builds this image. A broken Dockerfile fails after cutover, not before.

@@ -49,6 +49,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
       feedLogs,
       diaperLogs,
       pottyLogs,
+      breastMilkBagLogs,
       moodLogs,
       notes,
       milestones,
@@ -68,6 +69,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
       prisma.feedLog.findMany({ where: { familyId }, include: { baby: { select: { firstName: true, lastName: true } }, caretaker: { select: { name: true } } } }),
       prisma.diaperLog.findMany({ where: { familyId }, include: { baby: { select: { firstName: true, lastName: true } }, caretaker: { select: { name: true } } } }),
       prisma.pottyLog.findMany({ where: { familyId }, include: { baby: { select: { firstName: true, lastName: true } }, caretaker: { select: { name: true } } } }),
+      prisma.breastMilkBagLog.findMany({ where: { familyId }, include: { baby: { select: { firstName: true, lastName: true } }, caretaker: { select: { name: true } } } }),
       prisma.moodLog.findMany({ where: { familyId }, include: { baby: { select: { firstName: true, lastName: true } }, caretaker: { select: { name: true } } } }),
       prisma.note.findMany({ where: { familyId }, include: { baby: { select: { firstName: true, lastName: true } }, caretaker: { select: { name: true } } } }),
       prisma.milestone.findMany({ where: { familyId }, include: { baby: { select: { firstName: true, lastName: true } }, caretaker: { select: { name: true } } } }),
@@ -101,6 +103,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
         feedLogs: feedLogs.length,
         diaperLogs: diaperLogs.length,
         pottyLogs: pottyLogs.length,
+        breastMilkBagLogs: breastMilkBagLogs.length,
         moodLogs: moodLogs.length,
         notes: notes.length,
         milestones: milestones.length,
@@ -145,6 +148,13 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
         ...p,
         babyName: p.baby ? `${p.baby.firstName} ${p.baby.lastName}` : '',
         caretakerName: p.caretaker?.name || '',
+        baby: undefined,
+        caretaker: undefined
+      })),
+      breastMilkBagLogs: breastMilkBagLogs.map(b => ({
+        ...b,
+        babyName: b.baby ? `${b.baby.firstName} ${b.baby.lastName}` : '',
+        caretakerName: b.caretaker?.name || '',
         baby: undefined,
         caretaker: undefined
       })),

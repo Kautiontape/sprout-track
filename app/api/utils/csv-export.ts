@@ -108,6 +108,7 @@ export async function createDataExport(exportData: {
   notes?: any[];
   milestones?: any[];
   pumpLogs?: any[];
+  breastMilkBagLogs?: any[];
   playLogs?: any[];
   bathLogs?: any[];
   measurements?: any[];
@@ -142,6 +143,7 @@ export async function createDataExport(exportData: {
     { key: 'notes', filename: 'notes.csv' },
     { key: 'milestones', filename: 'milestones.csv' },
     { key: 'pumpLogs', filename: 'pump-logs.csv' },
+    { key: 'breastMilkBagLogs', filename: 'breast-milk-bag-logs.csv' },
     { key: 'playLogs', filename: 'play-logs.csv' },
     { key: 'bathLogs', filename: 'bath-logs.csv' },
     { key: 'measurements', filename: 'measurements.csv' },

@@ -33,14 +33,27 @@
 
 ## Scratch database canaries
 
-The local dev database is a stale June copy — 301 feeds and 244 diapers, but zero
-potty logs and zero solid feeds. Row-count checks against it would be vacuous, so
-`db/sync-test.db` was seeded with canary rows before the ladder started:
+`db/sync-test.db` is a **read-only snapshot of the live ktn production database**,
+pulled 2026-08-24 and current through that afternoon. The repo's own
+`db/baby-tracker.db` is a stale June dev copy and is NOT what the dry runs use.
 
-- **5 `PottyLog` rows** (ids `canary-potty-1`..`5`, one with a NULL `pottyLocation`).
-  No upstream migration may alter or delete these. This is the invariant canary.
-- **4 `FeedLog` rows with `type='SOLIDS'`** (ids `canary-solid-1`..`4`, one with NULL
-  amount and food). Upstream's 1.6.0 migration converts these into `FoodLog` rows.
+Baseline, measured before the ladder started:
+
+| Measure | Value | Why it matters |
+| --- | ---: | --- |
+| `PottyLog` rows | **24** | The invariant canary. No upstream migration may change this. |
+| `FeedLog` rows | **701** | Total must survive both row-rewriting migrations. |
+| `FeedLog` with `type='SOLIDS'` | **0** | Upstream's 1.6.0 solid-to-food conversion is a **no-op** for this family. |
+| `FeedLog` with `bottleType='Formula\Breast'` | **156** | Upstream's 1.6.2 migration **does** rewrite these. Real canary. |
+
+Two consequences worth knowing:
+
+- The scariest-sounding migration (1.6.0, solid feeds to food logs) touches nothing
+  here, because this family never logged a solid feed. The dry run proves the
+  migration executes cleanly against our merged schema, not that it converts
+  correctly — there is nothing to convert.
+- The 1.6.2 bottle-type migration is the one that actually rewrites production
+  rows: 156 of them. That is the migration to watch.
 
 The datasource URL is a literal in `schema.prisma` — Prisma requires it, see
 `scripts/prisma-provider.js` — so `DATABASE_URL` is ignored. Every dry run
@@ -665,7 +678,7 @@ sqlite3 db/sync-test.db "SELECT COUNT(*) AS solid_feeds FROM FeedLog WHERE type 
 sqlite3 db/sync-test.db "SELECT COUNT(*) AS potty_logs FROM PottyLog;"
 ```
 
-Expected: `solid_feeds` is **4** and `potty_logs` is **5** — the seeded canaries. The potty count must not change; the solid-feed count is what upstream's migration converts.
+Expected: `solid_feeds` is **0** and `potty_logs` is **24**. This family never logged a solid feed, so upstream's conversion has nothing to convert — the dry run here proves the migration *executes* against our merged schema, not that it converts correctly.
 
 - [ ] **Step 8: Run the migration and verify the conversion**
 
@@ -676,15 +689,14 @@ sqlite3 db/sync-test.db "SELECT COUNT(*) FROM FoodLog;"
 sqlite3 db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
 ```
 
-Expected: `All migrations have been successfully applied.` The `FoodLog` count is **at least 4**, reflecting the four converted canary solid feeds from Step 7. **The `PottyLog` count is still 5** — if it moved, stop and investigate before going further.
-
-Confirm the canary rows themselves survived intact, not just the count:
+Expected: `All migrations have been successfully applied.` `FoodLog` is **0** (nothing to convert). **`PottyLog` is still 24 and `FeedLog` is still 701** — if either moved, stop and investigate before going further.
 
 ```bash
-sqlite3 db/sync-test.db "SELECT id, type, COALESCE(pottyLocation,'(null)') FROM PottyLog WHERE id LIKE 'canary-potty-%' ORDER BY id;"
+sqlite3 db/sync-test.db "SELECT COUNT(*) FROM FeedLog;"
+sqlite3 db/sync-test.db "SELECT type, COUNT(*) FROM PottyLog GROUP BY type;"
 ```
 
-Expected: all five rows, with types `WET`, `DIRTY`, `BOTH`, `WET`, `WET` and locations `Toilet`, `Potty Chair`, `Sink`, `(null)`, `Outside`.
+Expected: 701 feeds; potty breakdown `DIRTY|1` and `WET|23`.
 
 - [ ] **Step 9: Smoke-test**
 
@@ -785,7 +797,15 @@ sqlite3 db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
 sqlite3 db/sync-test.db "SELECT DISTINCT bottleType FROM FeedLog WHERE bottleType IS NOT NULL;"
 ```
 
-Expected: `All migrations have been successfully applied.` The `PottyLog` count is **5** both before and after. The distinct bottle types show upstream's post-migration canonical values with no slash-separated leftovers.
+Expected: `All migrations have been successfully applied.` `PottyLog` is **24** both before and after, and `FeedLog` is still **701**.
+
+This is the migration that actually rewrites production rows — 156 of them. Verify the rewrite happened and lost nothing:
+
+```bash
+sqlite3 db/sync-test.db "SELECT COALESCE(bottleType,'(null)'), COUNT(*) FROM FeedLog GROUP BY bottleType;"
+```
+
+Expected: **no `Formula\Breast` rows remain**, those 156 have moved to upstream's canonical mixed value, and the group counts still total 701.
 
 - [ ] **Step 9: Commit the merge**
 
@@ -1048,7 +1068,7 @@ npx prisma migrate deploy --schema=prisma/sync-test.prisma
 sqlite3 db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
 ```
 
-Expected: `All migrations have been successfully applied.` and a potty count of **5** both before and after.
+Expected: `All migrations have been successfully applied.` and a potty count of **24** both before and after.
 
 - [ ] **Step 9: Smoke-test**
 
@@ -1315,27 +1335,59 @@ Expected: the WHO growth data files are present in the image.
 
 ### Task 15: Cutover to main and deploy
 
-- [ ] **Step 1: Back up the real database again**
+**Read this before running anything in this task.**
 
-Time has passed since Task 1 and real entries have been logged since.
+The ktn container runs `npx prisma migrate deploy` on every startup
+(`docker-startup.sh:80`) against the live database in the `sprout-track_db-data`
+volume, with **no backup step of its own**. So the push in Step 5 is what actually
+migrates production — unattended, seconds after the image lands. The local
+`db/baby-tracker.db` is a stale June dev copy and is not the data at risk.
+
+Two consequences of the 1.3.5 security patch that land at this same moment:
+
+- **Everyone is logged out.** Upstream replaced the hardcoded JWT fallback with a
+  generated per-deployment `JWT_SECRET`. Existing sessions were signed with the old
+  hardcoded secret and become invalid. This is upstream's intent, not a defect.
+- `env:ensure` generates that secret inside the container on first boot, so no
+  manual step is needed — but the first request after deploy may lag while it seeds.
+
+- [ ] **Step 1: Back up the LIVE ktn volumes — this is the gate**
+
+```bash
+./ktn-scripts/backup-db.sh
+```
+
+Expected: three `.tar.gz` files (db, env, files) listed on both ktn and this laptop,
+under `/tmp/sprout-track-backup-<timestamp>`. **Write that path down** — it is the
+rollback. Do not proceed to any later step until this has succeeded.
+
+- [ ] **Step 2: Record the LIVE database's baseline counts**
+
+```bash
+SNAP=$(mktemp -d)
+ssh ktn "docker run --rm -v sprout-track_db-data:/data:ro -v /tmp:/out alpine cp /data/baby-tracker.db /out/pre-cutover.db"
+scp -q ktn:/tmp/pre-cutover.db "$SNAP/"
+ssh ktn "rm -f /tmp/pre-cutover.db"
+sqlite3 "$SNAP/pre-cutover.db" "SELECT 'potty', COUNT(*) FROM PottyLog UNION ALL SELECT 'feed', COUNT(*) FROM FeedLog UNION ALL SELECT 'diaper', COUNT(*) FROM DiaperLog UNION ALL SELECT 'sleep', COUNT(*) FROM SleepLog;"
+echo "baseline snapshot kept at $SNAP/pre-cutover.db"
+```
+
+Write all four numbers down and keep that snapshot until Step 6 confirms the deploy.
+As of 2026-08-24 the baseline was potty 24, feed 701, diaper 759, sleep 327; expect
+these to have grown by cutover time, since the family is actively logging.
+
+- [ ] **Step 2b: Back up the local dev database too**
+
+Secondary, but cheap:
 
 ```bash
 STAMP=$(date +%Y%m%d-%H%M%S)
 cp db/baby-tracker.db "db/baby-tracker.db.pre-cutover-${STAMP}.bak"
 cp db/baby-tracker-logs.db "db/baby-tracker-logs.db.pre-cutover-${STAMP}.bak"
-ls -la db/*pre-cutover* 
+ls -la db/*pre-cutover*
 ```
 
 Expected: two fresh `.bak` files.
-
-- [ ] **Step 2: Record the real database's potty and feed counts**
-
-```bash
-sqlite3 db/baby-tracker.db "SELECT COUNT(*) AS potty FROM PottyLog;"
-sqlite3 db/baby-tracker.db "SELECT COUNT(*) AS solid_feeds FROM FeedLog WHERE type = 'SOLIDS';"
-```
-
-Write both numbers down.
 
 - [ ] **Step 3: Merge to main**
 
@@ -1373,18 +1425,60 @@ gh run list --limit 3
 
 Expected: `build & publish` succeeds, then `Deploy to ktn` succeeds.
 
-- [ ] **Step 6: Verify on ktn**
-
-Open the deployed app and confirm: login works, the log-entry screen renders, a potty entry saves, our nursery mode loads, and the version shows 1.6.5.
-
-- [ ] **Step 7: Clean up the scratch database and branch**
+Watch the container migrate the live database as it starts:
 
 ```bash
-rm -f db/sync-test.db
+./ktn-scripts/logs.sh
+```
+
+Expected: `Running database migrations...` followed by Prisma applying upstream's
+pending migrations and `All migrations have been successfully applied.` Ctrl-C once
+the app is serving.
+
+- [ ] **Step 6: Verify the live data survived**
+
+Before touching the UI, prove the migration did not lose rows:
+
+```bash
+SNAP2=$(mktemp -d)
+ssh ktn "docker run --rm -v sprout-track_db-data:/data:ro -v /tmp:/out alpine cp /data/baby-tracker.db /out/post-cutover.db"
+scp -q ktn:/tmp/post-cutover.db "$SNAP2/"
+ssh ktn "rm -f /tmp/post-cutover.db"
+sqlite3 "$SNAP2/post-cutover.db" "SELECT 'potty', COUNT(*) FROM PottyLog UNION ALL SELECT 'feed', COUNT(*) FROM FeedLog UNION ALL SELECT 'diaper', COUNT(*) FROM DiaperLog UNION ALL SELECT 'sleep', COUNT(*) FROM SleepLog;"
+sqlite3 "$SNAP2/post-cutover.db" "SELECT COALESCE(bottleType,'(null)'), COUNT(*) FROM FeedLog GROUP BY bottleType;"
+```
+
+Expected: potty, feed, diaper, and sleep counts all **match or exceed** the Step 2
+baseline (they can only grow — the family may have logged during the deploy). No
+`Formula\Breast` rows remain; those have moved to upstream's canonical mixed value.
+
+**If any count dropped, roll back immediately** using the backup from Step 1:
+
+```bash
+ssh ktn "docker compose -f /opt/services/sprout-track/docker-compose.yml -f /opt/services/sprout-track/docker-compose.ktn.yml down"
+ssh ktn "docker run --rm -v sprout-track_db-data:/data -v <backup-path>:/backup:ro alpine sh -c 'rm -rf /data/* && tar xzf /backup/sprout-track_db-data.tar.gz -C /data'"
+```
+
+Then revert the merge on `main` and re-deploy before investigating.
+
+- [ ] **Step 7: Verify the app**
+
+Open the deployed app and confirm: login works (**you will have to log in again — the
+JWT secret changed**), the log-entry screen renders, a potty entry saves, our nursery
+mode loads, and the version shows 1.6.5.
+
+- [ ] **Step 8: Clean up**
+
+Only after Step 6 and Step 7 both pass:
+
+```bash
+rm -f db/sync-test.db prisma/sync-test.prisma
 git branch -d sync/upstream-1.6.5
 ```
 
-Keep the `.bak` files.
+`db/sync-test.db` holds a copy of production data — delete it once the sync is
+confirmed. Keep the `.bak` files and the ktn backup tarballs until you are confident
+the deploy is healthy; `backup-db.sh` prints its own cleanup command.
 
 ---
 

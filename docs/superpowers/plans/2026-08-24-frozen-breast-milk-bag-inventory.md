@@ -542,21 +542,52 @@ In `model Caretaker`, alongside its log back-relations:
 
 If you cannot find the existing back-relation lines, run `grep -n "BreastMilkAdjustment\[\]" prisma/schema.prisma` — the three results are exactly the three places to edit.
 
-- [ ] **Step 4: Generate and apply the migration**
+- [ ] **Step 4: Generate the migration WITHOUT a shadow database**
 
-```bash
-npm run prisma:migrate -- --name add_breast_milk_bag_log
+**Do not run `prisma migrate dev` in this repo. It cannot succeed.**
+
+`migrate dev` validates history by replaying every migration from empty into a throwaway "shadow" database. This fork's history cannot survive that replay: `20260729174752_add_potty_log` adds `Settings.pottyLocationSettings`, and `20260801000000_restore_fork_settings_columns` adds it again. On a real deployment that is correct — upstream's `Settings` table rebuild drops the column in between, which is the entire reason the restore migration exists — but on a from-empty replay nothing drops it, so the second `ADD COLUMN` fails:
+
+```
+Error: P3006 ... duplicate column name: pottyLocationSettings
 ```
 
-Expected: Prisma prints `Applying migration \`<timestamp>_add_breast_milk_bag_log\`` and then `Your database is now in sync with your schema.` It must **not** prompt to reset the database. If it does, stop — an unexpected drift exists and resetting would destroy real data.
+This is the pre-existing, documented "Known issue: fresh installs fail" in `documentation/upstream-sync.md`. It has nothing to do with this feature, and fixing it is explicitly out of scope here.
 
-- [ ] **Step 5: Verify the generated SQL is additive only**
+Generate the SQL by diffing the live database against the schema instead. This is Prisma's supported manual-migration path and touches no shadow database:
 
 ```bash
-cat prisma/migrations/*_add_breast_milk_bag_log/migration.sql
+MIGRATION_DIR="prisma/migrations/$(date +%Y%m%d%H%M%S)_add_breast_milk_bag_log"
+mkdir -p "$MIGRATION_DIR"
+npx prisma migrate diff \
+  --from-schema-datasource prisma/schema.prisma \
+  --to-schema-datamodel prisma/schema.prisma \
+  --script > "$MIGRATION_DIR/migration.sql"
+cat "$MIGRATION_DIR/migration.sql"
 ```
 
-Expected: one `CREATE TABLE "BreastMilkBagLog"` and five `CREATE INDEX` statements. No `DROP`, no `ALTER TABLE` on any existing table.
+Expected: exactly one `CREATE TABLE "BreastMilkBagLog"` and five `CREATE INDEX` statements.
+
+- [ ] **Step 5: Verify the SQL is additive only, THEN apply it**
+
+Read the generated file before running it. It must contain **no** `DROP` of any kind, and **no** `ALTER TABLE` against a pre-existing table. If it does, stop and report BLOCKED — that means the diff picked up unrelated drift and applying it could destroy data.
+
+```bash
+grep -iE "drop|alter table" "$MIGRATION_DIR/migration.sql" || echo "CLEAN: additive only"
+```
+
+Expected: `CLEAN: additive only`.
+
+Only once that prints clean, apply it and record it in migration history:
+
+```bash
+npx prisma db execute --file "$MIGRATION_DIR/migration.sql" --schema prisma/schema.prisma
+npx prisma migrate resolve --applied "$(basename "$MIGRATION_DIR")"
+```
+
+Expected: the execute prints `Script executed successfully.` and the resolve prints `Migration marked as applied.`
+
+`migrate resolve` writes the row into `_prisma_migrations` that `migrate dev` would have written, so production `migrate deploy` — which does **not** use a shadow database — will treat this migration exactly like any other.
 
 - [ ] **Step 6: Regenerate the Prisma client**
 

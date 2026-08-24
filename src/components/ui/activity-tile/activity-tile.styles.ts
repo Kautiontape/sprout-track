@@ -24,6 +24,7 @@ export const activityTileStyles = {
       milestone: "",
       medicine: "",
       vaccine: "",
+      food: "",
       default: ""
     }
   },
@@ -43,6 +44,7 @@ export const activityTileStyles = {
       milestone: "",
       medicine: "",
       vaccine: "",
+      food: "",
       default: ""
     }
   },
@@ -61,6 +63,7 @@ export const activityTileStyles = {
       measurement: "text-indigo-600",
       medicine: "text-red-600",
       vaccine: "text-red-600",
+      food: "text-lime-600",
       milestone: "text-pink-600",
       default: "text-gray-800"
     },
@@ -78,6 +81,7 @@ export const activityTileStyles = {
       milestone: '/milestone-128.png',
       medicine: '/med-128.png',
       vaccine: '/vaccine-128.png',
+      food: '/food-256.png',
       default: '/default-128.png'
     }
   },

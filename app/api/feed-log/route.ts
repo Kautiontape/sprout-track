@@ -57,6 +57,9 @@ async function handlePost(req: NextRequest, authContext: AuthResult) {
       // Handle notes and bottleType - convert empty strings to null, canonicalize casing
       notes: body.notes && body.notes.trim() ? body.notes : null,
       bottleType: normalizeBottleType(body.bottleType),
+      hadReaction: body.hadReaction === true,
+      reactionDescription: body.reactionDescription && body.reactionDescription.trim() ? body.reactionDescription : null,
+      reactionCause: body.reactionCause && body.reactionCause.trim() ? body.reactionCause : null,
       familyId,
     };
     
@@ -153,8 +156,15 @@ async function handlePut(req: NextRequest, authContext: AuthResult) {
       notes: body.notes && body.notes.trim() ? body.notes : null,
       bottleType: normalizeBottleType(body.bottleType),
       ...(body.breastMilkAmount !== undefined ? { breastMilkAmount: body.breastMilkAmount } : {}),
+      ...(body.hadReaction !== undefined ? { hadReaction: body.hadReaction === true } : {}),
+      ...(body.reactionDescription !== undefined
+        ? { reactionDescription: body.reactionDescription && body.reactionDescription.trim() ? body.reactionDescription : null }
+        : {}),
+      ...(body.reactionCause !== undefined
+        ? { reactionCause: body.reactionCause && body.reactionCause.trim() ? body.reactionCause : null }
+        : {}),
       ...Object.entries(body)
-        .filter(([key]) => !['time', 'startTime', 'endTime', 'feedDuration', 'notes', 'bottleType', 'breastMilkAmount', 'familyId', 'sourcePumpId'].includes(key))
+        .filter(([key]) => !['time', 'startTime', 'endTime', 'feedDuration', 'notes', 'bottleType', 'breastMilkAmount', 'hadReaction', 'reactionDescription', 'reactionCause', 'familyId', 'sourcePumpId'].includes(key))
         .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {}),
     };
 

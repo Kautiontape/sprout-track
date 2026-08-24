@@ -23,6 +23,7 @@ import PumpingStatsSection from './PumpingStatsSection';
 import BathStatsSection from './BathStatsSection';
 import PlayStatsSection from './PlayStatsSection';
 import { computePottyStats } from './potty-stats.utils';
+import FoodStatsSection from './FoodStatsSection';
 import { useLocalization } from '@/src/context/localization';
 import { formatDateShort } from '@/src/utils/dateFormat';
 
@@ -910,7 +911,7 @@ const StatsTab: React.FC<StatsTabProps> = ({
 
   return (
     <div className="space-y-4">
-      <Accordion type="multiple" defaultValue={['sleep', 'feeding', 'diaper', 'potty', 'activities', 'pumping', 'baths']}>
+      <Accordion type="multiple" defaultValue={['sleep', 'feeding', 'foods', 'diaper', 'potty', 'activities', 'pumping', 'baths']}>
         {/* Sleep Section */}
         <SleepStatsSection
           stats={stats.sleep}
@@ -921,6 +922,9 @@ const StatsTab: React.FC<StatsTabProps> = ({
 
         {/* Feeding Section */}
         <FeedingStatsSection stats={stats.feeding} activities={activities} dateRange={dateRange} />
+
+        {/* Foods Section (issue #203) */}
+        <FoodStatsSection dateRange={dateRange} />
 
         {/* Diaper Section */}
         <DiaperStatsSection stats={stats.diaper} activities={activities} dateRange={dateRange} />

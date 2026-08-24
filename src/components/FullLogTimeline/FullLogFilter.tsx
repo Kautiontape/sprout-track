@@ -16,6 +16,7 @@ import {
   Baby,
   Syringe,
   Toilet,
+  Apple,
 } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
 import { FilterType, FullLogFilterProps } from './full-log-timeline.types';
@@ -74,6 +75,7 @@ const FullLogFilter: React.FC<FullLogFilterProps> = ({
     { type: 'medicine', icon: <PillBottle className="h-4 w-4" aria-hidden="true" />, labelKey: 'Medicine' },
     { type: 'play', icon: <Baby className="h-4 w-4" aria-hidden="true" />, labelKey: 'Activity' },
     { type: 'vaccine', icon: <Syringe className="h-4 w-4" aria-hidden="true" />, labelKey: 'Vaccine' },
+    { type: 'food', icon: <Apple className="h-4 w-4" aria-hidden="true" />, labelKey: 'Food' },
   ] as const;
 
   // Format date range for display

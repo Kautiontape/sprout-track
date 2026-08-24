@@ -20,7 +20,8 @@ import {
   Syringe,
   Info,
   Toilet,
-  Camera
+  Camera,
+  Apple
 } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
 import { Button } from '@/src/components/ui/button';
@@ -38,6 +39,7 @@ import { useTimezone } from '@/app/context/timezone';
 import { formatDateLong, formatTimeDisplay } from '@/src/utils/dateFormat';
 import { getSymbol } from '@/src/hooks/useUnit';
 import { computeDayStats } from './computeDayStats';
+import { formatAmountsByUnit } from '@/src/utils/foodLogUtils';
 import { fetchPhotosEnabled } from '@/src/utils/photoClientApi';
 import { countUniquePhotoIds } from '@/src/utils/photoUtils';
 
@@ -194,7 +196,7 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
     const {
       totalSleepMinutes, awakeMinutes, totalFeedCount,
       bottleFeedTotal, breastMilkBottleTotal, formulaBottleTotal, otherBottleTotal,
-      leftBreastFeedMinutes, rightBreastFeedMinutes, solidsAmounts,
+      leftBreastFeedMinutes, rightBreastFeedMinutes, solidsAmounts, foodCount,
       wetCount, poopCount, pottyCount, noteCount, bathCount, pumpCount, pumpTotal,
       milestoneCount, measurementCount, playCount, totalPlayMinutes, vaccineCount,
     } = dayStats;
@@ -295,12 +297,7 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
           formattedBottleAmounts = `${total} ${unitLabel}`;
         }
       }
-      
-      // Format solids amounts
-      const formattedSolidsAmounts = Object.entries(solidsAmounts)
-        .map(([unit, amount]) => `${amount} ${unit.toLowerCase()}`)
-        .join(', ');
-      
+
       // Format breast feed amounts separately for left and right
       const breastFeedParts: string[] = [];
       if (leftBreastFeedMinutes > 0 && rightBreastFeedMinutes > 0) {
@@ -312,7 +309,7 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
         breastFeedParts.push(`${t('Right:')} ${formatMinutes(rightBreastFeedMinutes)}`);
       }
       const formattedBreastFeed = breastFeedParts.length > 0 ? breastFeedParts.join(', ') : '';
-      
+
       // Build combined label
       const labelParts: string[] = [];
       if (formattedBottleAmounts) {
@@ -321,14 +318,11 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
       if (formattedBreastFeed) {
         labelParts.push(formattedBreastFeed);
       }
-      if (formattedSolidsAmounts) {
-        labelParts.push(formattedSolidsAmounts);
-      }
-      
-      const combinedLabel = labelParts.length > 0 
+
+      const combinedLabel = labelParts.length > 0
         ? labelParts.join(' • ')
         : t('Feeds');
-      
+
       tiles.push({
         filter: 'feed',
         label: combinedLabel,
@@ -345,6 +339,23 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
         pace: averages && averages.full.bottleVolume > 0
           ? buildPace(bottleFeedTotal, averages?.expectedByNow?.bottleVolume, (n) => `${roundAmount(n)} ${preferredUnit.toLowerCase()}`)
           : buildPace(totalFeedCount, averages?.expectedByNow?.feedCount, (n) => String(round1(n)), true),
+      });
+    }
+
+    // Foods tile (issues #203/#207): food logs are the single source of truth
+    // for solids eating, so this replaces the former separate Solids tile
+    if (foodCount > 0) {
+      const formattedSolidsAmounts = formatAmountsByUnit(solidsAmounts);
+
+      tiles.push({
+        filter: 'food',
+        label: formattedSolidsAmounts || t('Foods'),
+        value: foodCount.toString(),
+        icon: <Apple className="h-full w-full" aria-hidden="true" />,
+        bgColor: 'bg-gray-50',
+        iconColor: 'text-[#BBD444]', // matches food timeline entries
+        borderColor: 'border-gray-500',
+        bgActiveColor: 'bg-gray-100'
       });
     }
 

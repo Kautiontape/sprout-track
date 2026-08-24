@@ -21,7 +21,7 @@ export const getActivityTime = (activity: ActivityType): string => {
 /**
  * Determines the variant based on the activity type
  */
-export const getActivityVariant = (activity: ActivityType): 'sleep' | 'feed' | 'diaper' | 'potty' | 'note' | 'bath' | 'pump' | 'play' | 'measurement' | 'milestone' | 'medicine' | 'vaccine' | 'default' => {
+export const getActivityVariant = (activity: ActivityType): 'sleep' | 'feed' | 'diaper' | 'potty' | 'note' | 'bath' | 'pump' | 'play' | 'measurement' | 'milestone' | 'medicine' | 'vaccine' | 'food' | 'default' => {
   // Potty must be checked first: a PottyLog has `type` but none of duration/
   // quality/amount/condition, so it would otherwise fall through to 'default'.
   if ('pottyLocation' in activity) return 'potty';
@@ -40,6 +40,7 @@ export const getActivityVariant = (activity: ActivityType): 'sleep' | 'feed' | '
   }
   if ('doseAmount' in activity && 'medicineId' in activity) return 'medicine';
   if ('vaccineName' in activity) return 'vaccine';
+  if ('foodId' in activity) return 'food';
   if ('title' in activity && 'category' in activity) return 'milestone';
   if ('leftAmount' in activity || 'rightAmount' in activity) return 'pump';
   if ('content' in activity) return 'note';

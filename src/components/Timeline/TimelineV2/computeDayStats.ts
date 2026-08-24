@@ -28,6 +28,9 @@ export interface DayStats {
   otherBottleTotal: number;
   leftBreastFeedMinutes: number;
   rightBreastFeedMinutes: number;
+  /** Food-log tries on the day (issue #203) — the source of truth for solids. */
+  foodCount: number;
+  /** Solids totals keyed by lowercase unit abbreviation, sourced from food logs. */
   solidsAmounts: Record<string, number>;
   wetCount: number;
   dirtyCount: number;
@@ -74,6 +77,7 @@ export function computeDayStats(
     otherBottleTotal: 0,
     leftBreastFeedMinutes: 0,
     rightBreastFeedMinutes: 0,
+    foodCount: 0,
     solidsAmounts: {},
     wetCount: 0,
     dirtyCount: 0,
@@ -94,6 +98,24 @@ export function computeDayStats(
   };
 
   activities.forEach(activity => {
+    // Food logs (issue #203) — `foodId` is unique to them. Solids live here now
+    // that legacy SOLIDS feeds are converted to food logs at startup, so they
+    // are counted on their own and never fold into the feed count.
+    if ('foodId' in activity) {
+      const foodLog = activity as any;
+      if (foodLog.deletedAt != null) return;
+      const time = new Date(foodLog.time);
+      if (time >= startOfDay && time <= endBound) {
+        stats.hasAnyActivity = true;
+        stats.foodCount++;
+        if (typeof foodLog.amount === 'number' && foodLog.amount > 0) {
+          const unit = (foodLog.unitAbbr || 'g').toLowerCase();
+          stats.solidsAmounts[unit] = (stats.solidsAmounts[unit] || 0) + foodLog.amount;
+        }
+      }
+      return; // Skip further checks for this activity
+    }
+
     // Play activities - check before sleep since both have duration, startTime, type
     if ('activities' in activity && 'type' in activity && PLAY_TYPES.includes((activity as any).type)) {
       const time = new Date((activity as any).startTime);
@@ -163,15 +185,6 @@ export function computeDayStats(
             // Milk, Other, or uncategorized
             stats.otherBottleTotal += converted;
           }
-        } else if (activity.type === 'SOLIDS') {
-          stats.hasAnyActivity = true;
-          stats.totalFeedCount++;
-          // Track solids amounts by unit
-          const unit = activity.unitAbbr || 'g';
-          if (!stats.solidsAmounts[unit]) {
-            stats.solidsAmounts[unit] = 0;
-          }
-          stats.solidsAmounts[unit] += activity.amount || 0;
         }
       }
     }

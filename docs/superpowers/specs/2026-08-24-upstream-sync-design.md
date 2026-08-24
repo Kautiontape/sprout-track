@@ -242,14 +242,33 @@ Not in scope. Recorded so they are choices rather than oversights.
   Pre-existing debt, not created by this sync. Note that upstream's
   `tests/translationFiles.test.ts` was reformulated during rung 1.6.5 to accommodate the
   blanks; clearing this debt would let the original assertion stand.
-- **Fixing the fresh-install migration bug.** Our `20260721201741_add_daily_stats_avg_days`
-  rebuilds `Settings` without upstream's `bathTypeSettings`, `photoQuotaMB`, and
-  `growthChartStandard`, mirroring the bug that
-  `20260801000000_restore_fork_settings_columns` fixes in the other direction. Existing
-  deployments are unaffected — this only bites a database migrated from empty, e.g. a
-  restore into a fresh volume. A single static migration cannot repair both states, and
-  editing the original breaks Prisma's checksum validation on every existing database, so
-  this needs its own design.
+- **Fixing the fresh-install migration bug — confirmed, not theoretical.** Our
+  `20260721201741_add_daily_stats_avg_days` rebuilds `Settings` without upstream's
+  `bathTypeSettings`, `photoQuotaMB`, and `growthChartStandard`, mirroring the bug that
+  `20260801000000_restore_fork_settings_columns` fixes in the other direction.
+
+  Reproduced 2026-08-24 by starting the built container against an empty database:
+
+  ```
+  Error: P3018  A migration failed to apply.
+  The column `growthChartStandard` does not exist in the current database.
+  ```
+
+  Migrations **abort**, so a from-empty install does not merely lose a setting — the
+  container cannot come up at all.
+
+  **Existing deployments and the cutover rollback are unaffected.** `backup-db.sh` tars
+  the volume, so a restore returns an already-migrated database with its
+  `_prisma_migrations` history intact; `migrate deploy` then has nothing pending that
+  re-runs the offending migration. The failure only occurs when migrating from zero.
+
+  Why it needs its own design rather than a quick patch: a single static SQL migration
+  cannot repair both states, because on an existing database upstream's rebuild runs
+  *after* ours (it was pending) while on a fresh install it runs *before*. Adding columns
+  unconditionally fixes one state and errors in the other. Editing the original migration
+  breaks Prisma's checksum validation on every existing database. The likely shape is an
+  idempotent "ensure columns" step in `docker-startup.sh` ahead of `migrate deploy`,
+  following the same pattern as `scripts/convert-solids-feeds.js`.
 
 ## Out of scope
 

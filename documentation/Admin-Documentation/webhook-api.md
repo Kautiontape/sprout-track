@@ -437,9 +437,13 @@ A potty catch — elimination that did **not** go in a diaper.
 }
 ```
 
-**pottyType:** `WET` (pee), `DIRTY` (poop), or `BOTH`
+**pottyType:** required -- `WET` (pee), `DIRTY` (poop), or `BOTH` (case-insensitive; stored using this exact casing, so sending `"wet"` stores `"WET"`). A missing or unrecognized value returns `400 INVALID_POTTY_TYPE`.
 
-Optional fields: `pottyLocation` (`Potty Chair`, `Toilet`, `Sink`, `Tub`, `Outside`, `Other`), `notes`
+Optional fields: `pottyLocation`, `notes`
+
+**`pottyLocation`** is the receptacle used, and is a **free-form string**, not a closed enum -- the app suggests `Potty Chair`, `Toilet`, `Sink`, `Tub`, `Outside`, and `Other`, but any string is accepted and stored verbatim (no case normalization). Omitted or blank is stored as `null`.
+
+> **Potty is create-and-read only.** `POST /activities` and `GET /activities` support `potty`; `PUT` and `DELETE` on `/activities/:activityId` do not. A `PUT` with `"type": "potty"` returns `400 INVALID_ACTIVITY_TYPE`, and a `DELETE` (with or without `?type=potty`) returns `404 ACTIVITY_NOT_FOUND`. Edit or remove a potty catch through the app UI.
 
 Potty catches are counted separately from diapers — `dailyCounts.diapers` never includes
 them, and `dailyCounts.pottyCatches` reports them on their own. A potty catch does reset
@@ -638,7 +642,7 @@ curl -s -X PUT \
   http://localhost:3000/api/hooks/v1/babies/BABY_ID/activities/ACTIVITY_ID
 ```
 
-**Supported types:** `feed`, `diaper`, `sleep`, `note`, `pump`, `play`, `bath`, `measurement`, `medicine`, and `supplement`.
+**Supported types:** `feed`, `diaper`, `sleep`, `note`, `pump`, `play`, `bath`, `measurement`, `medicine`, and `supplement`. `potty` is **not** supported here -- see the Potty section above.
 
 The response includes `activityType`, `id`, `babyId`, `time` when applicable, `status: "updated"`, and type-specific confirmation details.
 
@@ -652,7 +656,7 @@ curl -s -X DELETE \
   http://localhost:3000/api/hooks/v1/babies/BABY_ID/activities/ACTIVITY_ID
 ```
 
-The hooks delete endpoint matches the current classic UI log behavior for these activity types: after confirming the row belongs to the API key's family and route baby, it hard-deletes the activity row. Add `?type=feed` if you already know the activity type and want to avoid type probing -- `?type=` accepts the same ten activity type values as PUT. DELETE shares the 30 requests/minute write rate limit.
+The hooks delete endpoint matches the current classic UI log behavior for these activity types: after confirming the row belongs to the API key's family and route baby, it hard-deletes the activity row. Add `?type=feed` if you already know the activity type and want to avoid type probing -- `?type=` accepts the same ten activity type values as PUT. `potty` is not among them; a potty activity id is not deletable through this endpoint and returns `404 ACTIVITY_NOT_FOUND`. DELETE shares the 30 requests/minute write rate limit.
 
 The response includes `activityType`, `id`, `babyId`, `time` when applicable, and `status: "deleted"`.
 

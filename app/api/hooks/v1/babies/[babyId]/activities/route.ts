@@ -7,8 +7,11 @@ import { notifyActivityCreated, resetTimerNotificationState } from '@/src/lib/no
 import { startBreastfeedSession, updateBreastfeedSession, endBreastfeedSession } from '../../../../../utils/activeBreastFeed';
 import { BATH_TYPES, BOTTLE_TYPES, DIAPER_COLORS, DIAPER_CONDITIONS, FEED_SIDES, PUMP_ACTIONS, SLEEP_QUALITIES, normalizeEnumValue } from '../../../field-values';
 
-const VALID_TYPES = ['sleep', 'feed', 'diaper', 'note', 'pump', 'play', 'bath', 'measurement', 'medicine', 'supplement'] as const;
+const VALID_TYPES = ['sleep', 'feed', 'diaper', 'potty', 'note', 'pump', 'play', 'bath', 'measurement', 'medicine', 'supplement'] as const;
 type ActivityType = typeof VALID_TYPES[number];
+
+// Potty catches reuse the DiaperType enum (labeled Pee / Poop / Both in the potty UI).
+const POTTY_TYPES = ['WET', 'DIRTY', 'BOTH'] as const;
 
 // Fields each POST handler actually consumes, plus the shared fields
 // (type/time/caretakerName, and action where the type supports one).
@@ -17,6 +20,7 @@ type ActivityType = typeof VALID_TYPES[number];
 const TYPE_FIELDS: Record<ActivityType, readonly string[]> = {
   feed: ['type', 'time', 'caretakerName', 'feedType', 'amount', 'unitAbbr', 'side', 'food', 'notes', 'bottleType', 'action', 'duration'],
   diaper: ['type', 'time', 'caretakerName', 'diaperType', 'condition', 'color', 'blowout', 'creamApplied'],
+  potty: ['type', 'time', 'caretakerName', 'pottyType', 'pottyLocation', 'notes'],
   sleep: ['type', 'time', 'caretakerName', 'sleepType', 'action', 'duration', 'location', 'quality'],
   note: ['type', 'time', 'caretakerName', 'content', 'category'],
   pump: ['type', 'time', 'caretakerName', 'action', 'duration', 'leftAmount', 'rightAmount', 'totalAmount', 'unitAbbr', 'pumpAction'],
@@ -48,6 +52,14 @@ function parseAmount(value: unknown, field: string): { value?: number | null; er
 function requireBooleanIfPresent(value: unknown, field: string): { error?: string } {
   if (value === undefined) return {};
   if (typeof value !== 'boolean') return { error: `${field} must be a boolean` };
+  return {};
+}
+
+// Same contract for free-text fields: present means it must actually be a
+// string, so a bad type fails as a 400 rather than a Prisma-level 500.
+function requireStringIfPresent(value: unknown, field: string): { error?: string } {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== 'string') return { error: `${field} must be a string` };
   return {};
 }
 
@@ -178,6 +190,25 @@ async function handleGet(req: NextRequest, ctx: ApiKeyContext, routeContext: any
           id: r.id,
           time: r.time.toISOString(),
           details: { type: r.type, condition: r.condition, color: r.color, blowout: r.blowout, creamApplied: r.creamApplied },
+          caretakerName: r.caretaker?.name || null,
+        }));
+      })
+    );
+  }
+
+  if (types.includes('potty')) {
+    queries.push(
+      prisma.pottyLog.findMany({
+        where: { babyId, deletedAt: null, time: { gte: since } },
+        orderBy: { time: 'desc' },
+        take: limit,
+        include: { caretaker: { select: { name: true } } },
+      }).then((rows) => {
+        rows.forEach((r) => activities.push({
+          activityType: 'potty',
+          id: r.id,
+          time: r.time.toISOString(),
+          details: { type: r.type, pottyLocation: r.pottyLocation, notes: r.notes },
           caretakerName: r.caretaker?.name || null,
         }));
       })
@@ -544,6 +575,29 @@ async function handlePost(req: NextRequest, ctx: ApiKeyContext, routeContext: an
         notifyActivityCreated(babyId, 'diaper', { caretakerId }, { type: diaperType }).catch(console.error);
         resetTimerNotificationState(babyId, 'diaper').catch(console.error);
         return hookSuccess({ activityType: 'diaper', id: result.id, time: result.time.toISOString(), details: { type: diaperType, condition: conditionResult.value, color: colorResult.value, blowout: result.blowout, creamApplied: result.creamApplied } }, { familyId, babyId }, rl.headers);
+      }
+
+      case 'potty': {
+        const { pottyType, pottyLocation, notes } = body;
+        const pottyTypeResult = normalizeRequiredEnumIfPresent(pottyType, 'pottyType', POTTY_TYPES) as { value: typeof POTTY_TYPES[number] | null; error?: string };
+        if (pottyTypeResult.error) return hookError('INVALID_POTTY_TYPE', pottyTypeResult.error, 400, rl.headers);
+        if (!pottyTypeResult.value) {
+          return hookError('INVALID_POTTY_TYPE', `pottyType is required and must be one of: ${POTTY_TYPES.join(', ')}`, 400, rl.headers);
+        }
+        // pottyLocation is the receptacle used. Deliberately free-form (like
+        // SleepLog.location) — families use receptacles beyond our suggested list.
+        const locationCheck = requireStringIfPresent(pottyLocation, 'pottyLocation');
+        if (locationCheck.error) return hookError('INVALID_FIELD', locationCheck.error, 400, rl.headers);
+        const notesCheck = requireStringIfPresent(notes, 'notes');
+        if (notesCheck.error) return hookError('INVALID_FIELD', notesCheck.error, 400, rl.headers);
+
+        result = await prisma.pottyLog.create({
+          data: { time, type: pottyTypeResult.value, pottyLocation: pottyLocation || null, notes: notes || null, babyId, caretakerId, familyId },
+        });
+        notifyActivityCreated(babyId, 'potty', { caretakerId }, { type: pottyTypeResult.value }).catch(console.error);
+        // A catch means no diaper is coming, so the diaper reminder timer resets too.
+        resetTimerNotificationState(babyId, 'diaper').catch(console.error);
+        return hookSuccess({ activityType: 'potty', id: result.id, time: result.time.toISOString(), details: { type: result.type, pottyLocation: result.pottyLocation, notes: result.notes } }, { familyId, babyId }, rl.headers);
       }
 
       case 'sleep': {

@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => {
       sleepLog: delegate(),
       feedLog: delegate(),
       diaperLog: delegate(),
+      pottyLog: delegate(),
       note: delegate(),
       pumpLog: delegate(),
       playLog: delegate(),
@@ -87,6 +88,7 @@ function resetDelegates() {
     mocks.prisma.sleepLog,
     mocks.prisma.feedLog,
     mocks.prisma.diaperLog,
+    mocks.prisma.pottyLog,
     mocks.prisma.note,
     mocks.prisma.pumpLog,
     mocks.prisma.playLog,
@@ -703,6 +705,117 @@ describe('hooks activities POST route', () => {
       expect(mocks.prisma.pumpLog.create).toHaveBeenCalledWith(expect.objectContaining({
         data: expect.objectContaining({ pumpAction: 'STORED' }),
       }));
+    });
+  });
+
+  // Potty is our fork's EC tracking. Upstream's validator rejects any field it
+  // does not know about, so these guard the registration as much as the handler.
+  describe('9. potty (fork feature)', () => {
+    it('accepts a potty catch and normalizes pottyType casing', async () => {
+      mocks.prisma.pottyLog.create.mockResolvedValue({
+        id: 'potty-1', time: new Date('2026-07-20T10:00:00Z'), type: 'WET', pottyLocation: 'Toilet', notes: 'caught it',
+      });
+
+      const response = await POST(postRequest({ type: 'potty', pottyType: 'wet', pottyLocation: 'Toilet', notes: 'caught it' }) as any, routeContext);
+      const payload = await json(response);
+
+      expect(response.status).toBe(200);
+      expect(payload.data.activityType).toBe('potty');
+      expect(payload.data.details).toEqual({ type: 'WET', pottyLocation: 'Toilet', notes: 'caught it' });
+      expect(mocks.prisma.pottyLog.create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ type: 'WET', pottyLocation: 'Toilet', notes: 'caught it', familyId: 'family-1', babyId: 'baby-1' }),
+      }));
+    });
+
+    it('stores an unlisted receptacle verbatim — pottyLocation is free-form, not an enum', async () => {
+      mocks.prisma.pottyLog.create.mockResolvedValue({
+        id: 'potty-2', time: new Date('2026-07-20T10:00:00Z'), type: 'DIRTY', pottyLocation: 'the blue bucket at grandmas', notes: null,
+      });
+
+      const response = await POST(postRequest({ type: 'potty', pottyType: 'DIRTY', pottyLocation: 'the blue bucket at grandmas' }) as any, routeContext);
+
+      expect(response.status).toBe(200);
+      expect(mocks.prisma.pottyLog.create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ pottyLocation: 'the blue bucket at grandmas' }),
+      }));
+    });
+
+    it('defaults a blank pottyLocation and notes to null', async () => {
+      mocks.prisma.pottyLog.create.mockResolvedValue({ id: 'potty-3', time: new Date('2026-07-20T10:00:00Z'), type: 'BOTH', pottyLocation: null, notes: null });
+
+      await POST(postRequest({ type: 'potty', pottyType: 'BOTH', pottyLocation: '' }) as any, routeContext);
+
+      expect(mocks.prisma.pottyLog.create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ pottyLocation: null, notes: null }),
+      }));
+    });
+
+    it('rejects a pottyType outside WET/DIRTY/BOTH', async () => {
+      const response = await POST(postRequest({ type: 'potty', pottyType: 'soggy' }) as any, routeContext);
+      const payload = await json(response);
+
+      expect(response.status).toBe(400);
+      expect(payload.error.code).toBe('INVALID_POTTY_TYPE');
+      expect(payload.error.message).toContain('WET, DIRTY, BOTH');
+      expect(mocks.prisma.pottyLog.create).not.toHaveBeenCalled();
+    });
+
+    it('requires pottyType', async () => {
+      const response = await POST(postRequest({ type: 'potty', pottyLocation: 'Toilet' }) as any, routeContext);
+      const payload = await json(response);
+
+      expect(response.status).toBe(400);
+      expect(payload.error.code).toBe('INVALID_POTTY_TYPE');
+      expect(mocks.prisma.pottyLog.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a field potty does not accept', async () => {
+      const response = await POST(postRequest({ type: 'potty', pottyType: 'WET', diaperType: 'WET' }) as any, routeContext);
+      const payload = await json(response);
+
+      expect(response.status).toBe(400);
+      expect(payload.error.code).toBe('INVALID_FIELD');
+      expect(payload.error.message).toContain('diaperType');
+      expect(mocks.prisma.pottyLog.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-string notes rather than letting it reach Prisma', async () => {
+      const response = await POST(postRequest({ type: 'potty', pottyType: 'WET', notes: 42 }) as any, routeContext);
+      const payload = await json(response);
+
+      expect(response.status).toBe(400);
+      expect(payload.error.code).toBe('INVALID_FIELD');
+      expect(mocks.prisma.pottyLog.create).not.toHaveBeenCalled();
+    });
+
+    it('returns potty rows from GET /activities', async () => {
+      mocks.prisma.pottyLog.findMany.mockResolvedValue([{
+        id: 'potty-4', time: new Date('2026-07-20T10:00:00Z'), type: 'BOTH', pottyLocation: 'Potty Chair', notes: null, caretaker: { name: 'Alex' },
+      }]);
+
+      const response = await GET(getRequest('?type=potty') as any, routeContext);
+      const payload = await json(response);
+
+      expect(response.status).toBe(200);
+      expect(payload.data.activities).toEqual([{
+        activityType: 'potty',
+        id: 'potty-4',
+        time: '2026-07-20T10:00:00.000Z',
+        details: { type: 'BOTH', pottyLocation: 'Potty Chair', notes: null },
+        caretakerName: 'Alex',
+      }]);
+      expect(mocks.prisma.pottyLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ babyId: 'baby-1', deletedAt: null }),
+      }));
+    });
+
+    it('accepts potty as a GET type filter instead of rejecting it as unknown', async () => {
+      mocks.prisma.pottyLog.findMany.mockResolvedValue([]);
+
+      const response = await GET(getRequest('?type=potty') as any, routeContext);
+
+      expect(response.status).toBe(200);
+      expect(mocks.prisma.diaperLog.findMany).not.toHaveBeenCalled();
     });
   });
 });

@@ -1335,6 +1335,36 @@ Expected: no `tsc` output; `✓ Compiled successfully`; all tests pass; the tran
 
 `npm run lint` is known-broken in this fork and is not a gate.
 
+- [ ] **Step 2b: Assert zero schema drift — the check the rung dry-runs were missing**
+
+Row counts are not sufficient evidence that a migration was harmless. Upstream's
+`20260719232539_add_who_growth_chart_data` rebuilds the whole `Settings` table
+(SQLite cannot `ALTER COLUMN`, so Prisma does `CREATE new_Settings` / `INSERT SELECT`
+/ `DROP` / `RENAME`) using upstream's column list, which silently drops this fork's
+`pottyLocationSettings`, `hueConfig`, and `dailyStatsAvgDays`. Every rung dry-run
+reported clean because it only counted rows. Migration
+`20260801000000_restore_fork_settings_columns` puts them back; this step proves it.
+
+```bash
+npx prisma migrate diff \
+  --from-schema-datasource prisma/schema.prisma \
+  --to-schema-datamodel prisma/schema.prisma --script
+```
+
+Expected: **no SQL statements** — the database matches the schema exactly. Any
+`CREATE TABLE "new_…"` in the output means a table rebuild dropped fork columns and
+the repair migration needs extending to cover them.
+
+Then prove the generated Prisma client can actually write `Settings`, which is what
+fails first when a column is missing (`P2022`, and the container cannot boot because
+`docker-startup.sh` runs this on every start):
+
+```bash
+DATABASE_URL="file:$(pwd)/db/sync-test.db" node scripts/convert-solids-feeds.js
+```
+
+Expected: it completes without a Prisma error.
+
 - [ ] **Step 3: Confirm our 350 translation keys survived all eight rungs**
 
 ```bash
@@ -1462,6 +1492,21 @@ echo "baseline snapshot kept at $SNAP/pre-cutover.db"
 ```
 
 Write all four numbers down and keep that snapshot until Step 6 confirms the deploy.
+
+**Also capture `hueConfig` — the deploy destroys it.** Upstream's WHO migration rebuilds
+`Settings` and discards this fork's columns; migration `20260801000000` re-adds the
+columns but cannot recover their values, because the data is gone before it runs.
+`dailyStatsAvgDays` and `pottyLocationSettings` are at defaults and lose nothing, but
+`hueConfig` holds the configured Hue buttons for the day-night flip feature.
+
+```bash
+sqlite3 "$SNAP/pre-cutover.db" "SELECT hueConfig FROM Settings WHERE hueConfig IS NOT NULL;" > "$SNAP/hueConfig.saved"
+printf '%s' "$(cat "$SNAP/hueConfig.saved")" > "$SNAP/hueConfig.trimmed"
+wc -c "$SNAP/hueConfig.trimmed"
+```
+
+Expected: a non-empty JSON blob beginning `{"buttons":[…`. Keep this file — Step 6b
+writes it back.
 As of 2026-08-24 the baseline was potty 24, feed 701, diaper 759, sleep 327; expect
 these to have grown by cutover time, since the family is actively logging.
 
@@ -1549,6 +1594,31 @@ ssh ktn "docker run --rm -v sprout-track_db-data:/data -v <backup-path>:/backup:
 ```
 
 Then revert the merge on `main` and re-deploy before investigating.
+
+- [ ] **Step 6b: Restore `hueConfig` on the live database**
+
+The columns are back (migration `20260801000000`) but `hueConfig` is now empty. Write
+the captured value back. **It must be stored as TEXT** — `readfile()` alone yields a
+BLOB, and Prisma then rejects the field with a type error rather than a missing-column
+error, which looks like a different bug entirely. The `CAST` and the newline trim both
+matter; this was verified the hard way during the rehearsal.
+
+```bash
+ssh ktn "mkdir -p /tmp/huerestore"
+scp -q "$SNAP/hueConfig.trimmed" ktn:/tmp/huerestore/hue.txt
+ssh ktn "docker run --rm -v sprout-track_db-data:/data -v /tmp/huerestore:/in:ro \
+  keinos/sqlite3 sqlite3 /data/baby-tracker.db \
+  \"UPDATE Settings SET hueConfig = CAST(readfile('/in/hue.txt') AS TEXT);\""
+ssh ktn "docker run --rm -v sprout-track_db-data:/data:ro keinos/sqlite3 sqlite3 /data/baby-tracker.db \
+  \"SELECT LENGTH(hueConfig) || ' chars, typeof=' || typeof(hueConfig) FROM Settings;\""
+ssh ktn "rm -rf /tmp/huerestore"
+```
+
+Expected: the character count matches what Step 2 captured, and `typeof=text`. If the
+sqlite3 image is unavailable on ktn, do the same `UPDATE` through the app container
+instead — any image with sqlite3 and the volume mounted will do.
+
+Then confirm the day-night flip Hue buttons render in the app before moving on.
 
 - [ ] **Step 7: Verify the app**
 

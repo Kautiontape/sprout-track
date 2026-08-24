@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ActivityTile } from '@/src/components/ui/activity-tile';
 import { StatusBubble } from "@/src/components/ui/status-bubble";
 import { SleepLogResponse, FeedLogResponse, DiaperLogResponse, PottyLogResponse, NoteResponse, BathLogResponse, PumpLogResponse, PlayLogResponse, MeasurementResponse, MilestoneResponse, MedicineLogResponse, VaccineLogResponse, ActivitySettings } from '@/app/api/types';
-import { ArrowDownUp } from 'lucide-react';
+import { ArrowDownUp, ChevronDown, ChevronUp } from 'lucide-react';
 import { useTheme } from '@/src/context/theme';
 import { useLocalization } from '@/src/context/localization';
 import './activity-tile-group.css';
@@ -10,6 +10,7 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuCheckboxItem,
 } from '@/src/components/ui/dropdown-menu';
 
@@ -18,12 +19,14 @@ interface ActivityTileGroupProps {
     id: string;
     feedWarningTime?: string | number;
     diaperWarningTime?: string | number;
+    feedTimerFrom?: string;
   } | null;
   sleepingBabies: Set<string>;
   feedingBabies?: Set<string>;
   sleepStartTime: Record<string, Date>;
   lastSleepEndTime: Record<string, Date>;
   lastFeedTime: Record<string, Date>;
+  lastFeedEndTime?: Record<string, Date>;
   lastDiaperTime: Record<string, Date>;
   feedStartTime?: Record<string, Date>;
   updateUnlockTimer: () => void;
@@ -57,6 +60,7 @@ export function ActivityTileGroup({
   sleepStartTime,
   lastSleepEndTime,
   lastFeedTime,
+  lastFeedEndTime,
   lastDiaperTime,
   feedStartTime,
   updateUnlockTimer,
@@ -129,6 +133,28 @@ export function ActivityTileGroup({
     container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
   }, []);
+
+  // Refs for the move up/down menu items, keyed by `${activity}:up` / `${activity}:down`,
+  // so focus can be restored after a reorder re-renders (moves) the dropdown rows
+  const moveButtonRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const pendingMoveFocusRef = useRef<string | null>(null);
+
+  // Restore focus to the activated move menu item after a keyboard reorder
+  useEffect(() => {
+    const key = pendingMoveFocusRef.current;
+    if (!key) return;
+    pendingMoveFocusRef.current = null;
+    const item = moveButtonRefs.current[key];
+    if (item && !item.hasAttribute('data-disabled')) {
+      item.focus();
+    } else {
+      // The activity reached a boundary and this menu item became disabled;
+      // move focus to the opposite-direction item on the same row
+      const [activityKey, direction] = key.split(':');
+      const sibling = moveButtonRefs.current[`${activityKey}:${direction === 'up' ? 'down' : 'up'}`];
+      sibling?.focus();
+    }
+  }, [activityOrder]);
 
   // State for tracking if settings have been loaded
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -512,17 +538,25 @@ export function ActivityTileGroup({
                 durationInMinutes={0}
               />
             ) : (
-              selectedBaby?.id && lastFeedTime[selectedBaby.id] && !exceeds24Hours(lastFeedTime[selectedBaby.id]) && (
-                <StatusBubble
-                  status="feed"
-                  className={`overflow-visible ${isLeftmost ? 'z-[39]' : 'z-40'}`}
-                  screenEdgeAware={isLeftmost}
-                  durationInMinutes={0}
-                  startTime={lastFeedTime[selectedBaby.id].toISOString()}
-                  warningTime={selectedBaby.feedWarningTime as string}
-                  activityType="feed"
-                />
-              )
+              (() => {
+                const feedEndTime = lastFeedEndTime?.[selectedBaby.id!];
+                const feedStartTimeVal = lastFeedTime[selectedBaby.id!];
+                const effectiveFeedTime = selectedBaby?.feedTimerFrom === 'end' && feedEndTime
+                  ? feedEndTime
+                  : feedStartTimeVal;
+
+                return selectedBaby?.id && effectiveFeedTime && !exceeds24Hours(effectiveFeedTime) && (
+                  <StatusBubble
+                    status="feed"
+                    className={`overflow-visible ${isLeftmost ? 'z-[39]' : 'z-40'}`}
+                    screenEdgeAware={isLeftmost}
+                    durationInMinutes={0}
+                    startTime={effectiveFeedTime.toISOString()}
+                    warningTime={selectedBaby.feedWarningTime as string}
+                    activityType="feed"
+                  />
+                );
+              })()
             )}
           </div>
         );
@@ -1042,7 +1076,7 @@ export function ActivityTileGroup({
                 }}
                 data-key={`order-${activity}`}
               >
-                <button 
+                <button
                   className="p-1 rounded-full hover:bg-gray-100 hover-background cursor-grab active:cursor-grabbing mr-2 activity-dropdown-item-drag-button"
                   onMouseDown={(e) => {
                     // Prevent dropdown from closing when starting drag
@@ -1051,8 +1085,38 @@ export function ActivityTileGroup({
                   aria-label={`${t('Drag to reorder')} ${activityDisplayNames[activity]}`}
                   title={t('Drag to reorder')}
                 >
-                  <ArrowDownUp className="h-4 w-4 text-gray-500 icon-text" />
+                  <ArrowDownUp className="h-4 w-4 text-gray-500 icon-text" aria-hidden="true" />
                 </button>
+                <DropdownMenuItem
+                  ref={(el) => { moveButtonRefs.current[`${activity}:up`] = el; }}
+                  className="p-1 my-0 rounded-full hover:bg-gray-100 focus:bg-gray-100 hover-background mr-1 data-[disabled]:opacity-40 data-[disabled]:pointer-events-auto data-[disabled]:hover:bg-transparent data-[disabled]:focus:bg-transparent activity-dropdown-item-move-button"
+                  disabled={index === 0}
+                  onSelect={(e) => {
+                    // preventDefault keeps the menu open so reordering can continue
+                    e.preventDefault();
+                    pendingMoveFocusRef.current = `${activity}:up`;
+                    moveActivityUp(activity);
+                  }}
+                  aria-label={t('Move up') + ' ' + activityDisplayNames[activity]}
+                  title={t('Move up')}
+                >
+                  <ChevronUp className="h-4 w-4 text-gray-500 icon-text" aria-hidden="true" />
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  ref={(el) => { moveButtonRefs.current[`${activity}:down`] = el; }}
+                  className="p-1 my-0 rounded-full hover:bg-gray-100 focus:bg-gray-100 hover-background mr-2 data-[disabled]:opacity-40 data-[disabled]:pointer-events-auto data-[disabled]:hover:bg-transparent data-[disabled]:focus:bg-transparent activity-dropdown-item-move-button"
+                  disabled={index === activityOrder.length - 1}
+                  onSelect={(e) => {
+                    // preventDefault keeps the menu open so reordering can continue
+                    e.preventDefault();
+                    pendingMoveFocusRef.current = `${activity}:down`;
+                    moveActivityDown(activity);
+                  }}
+                  aria-label={t('Move down') + ' ' + activityDisplayNames[activity]}
+                  title={t('Move down')}
+                >
+                  <ChevronDown className="h-4 w-4 text-gray-500 icon-text" aria-hidden="true" />
+                </DropdownMenuItem>
                 <DropdownMenuCheckboxItem
                   checked={visibleActivities.has(activity)}
                   onCheckedChange={() => toggleActivity(activity)}

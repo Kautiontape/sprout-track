@@ -1,5 +1,6 @@
 import { ActivityType } from '../types';
 import { convertVolume } from '@/src/utils/unit-conversion';
+import { groupBreastFeedSessions, BreastFeedLike } from '@/src/utils/feedSessionUtils';
 
 export interface DayStatsOptions {
   preferredUnit: string;
@@ -175,35 +176,6 @@ export function computeDayStats(
       }
     }
 
-    // Breast feed activities - track duration separately for left and right
-    if ('type' in activity && activity.type === 'BREAST') {
-      const time = new Date(activity.time);
-      if (time >= startOfDay && time <= endBound) {
-        stats.hasAnyActivity = true;
-        stats.totalFeedCount++;
-        // Track duration: prefer feedDuration (in seconds), fall back to amount (in minutes)
-        let feedMinutes = 0;
-        if ('feedDuration' in activity && activity.feedDuration) {
-          // Convert seconds to minutes
-          feedMinutes = Math.floor(activity.feedDuration / 60);
-        } else if ('amount' in activity && activity.amount) {
-          // Amount is already in minutes for older records
-          feedMinutes = activity.amount;
-        }
-
-        // Track by side if available
-        if ('side' in activity && activity.side) {
-          if (activity.side === 'LEFT') {
-            stats.leftBreastFeedMinutes += feedMinutes;
-          } else if (activity.side === 'RIGHT') {
-            stats.rightBreastFeedMinutes += feedMinutes;
-          }
-        }
-        // Note: If no side specified, we don't track it separately to avoid inaccuracy
-        // The feed is still counted in totalFeedCount
-      }
-    }
-
     // Potty activities. A PottyLog carries `type` just like a DiaperLog but never
     // `condition`, so today the two are already disjoint. The `else if` on the
     // diaper branch below makes that structural rather than incidental: if a record
@@ -333,6 +305,22 @@ export function computeDayStats(
       }
     }
   });
+
+  // Breast feeds: a left+right nursing session is stored as one row per side but
+  // is ONE feed (upstream issue #198). Grouping spans midnight, so it runs over
+  // the whole `activities` list and each session is attributed to the day it
+  // started. This only ever affects FEED counts — potty catches are counted
+  // per-row above and are never grouped or merged.
+  const breastRows = (activities as unknown as BreastFeedLike[])
+    .filter(a => a && typeof a === 'object' && 'type' in a && a.type === 'BREAST');
+  for (const session of groupBreastFeedSessions(breastRows)) {
+    if (session.time >= startOfDay && session.time <= endBound) {
+      stats.hasAnyActivity = true;
+      stats.totalFeedCount++;
+      stats.leftBreastFeedMinutes += Math.floor(session.leftDuration / 60);
+      stats.rightBreastFeedMinutes += Math.floor(session.rightDuration / 60);
+    }
+  }
 
   // Awake time: elapsed time (to the end bound) minus sleep
   const elapsedMinutes = Math.floor((endBound.getTime() - startOfDay.getTime()) / (1000 * 60));

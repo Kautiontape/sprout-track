@@ -18,6 +18,7 @@ import TimelineV2ActivityList from './TimelineV2ActivityList';
 import TimelineV2Heatmap from './TimelineV2Heatmap';
 import TimelineActivityDetails from '../TimelineActivityDetails';
 import { getActivityEndpoint, getActivityTime } from '../utils';
+import { groupBreastFeedSessions } from '@/src/utils/feedSessionUtils';
 import { SleepLogResponse, FeedLogResponse, DiaperLogResponse, PumpLogResponse, BreastMilkAdjustmentResponse, PlayLogResponse, VaccineLogResponse } from '@/app/api/types';
 import { useActivityCache } from './useActivityCache';
 import { latestElimination } from '@/src/lib/elimination';
@@ -31,8 +32,9 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
   const [isHeatmapVisible, setIsHeatmapVisible] = useState<boolean>(false);
 
   const [dateFilteredActivities, setDateFilteredActivities] = useState<ActivityType[]>([]);
-  const [heatmapActivities, setHeatmapActivities] = useState<ActivityType[]>([]);
+  // Selected day ±1 so daily stats can group breast-feed sessions across midnight
   const [windowActivities, setWindowActivities] = useState<ActivityType[]>([]);
+  const [heatmapActivities, setHeatmapActivities] = useState<ActivityType[]>([]);
 
   const [isLoadingActivities, setIsLoadingActivities] = useState<boolean>(false);
   const [isFetchAnimated, setIsFetchAnimated] = useState<boolean>(true);
@@ -63,10 +65,24 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
 
     if (lastFeed) {
       const feedAny = lastFeed as any;
-      const feedTime = (feedAny.type === 'BREAST' && feedAny.startTime)
-        ? String(feedAny.startTime)
-        : feedAny.time;
-      status.lastFeedTime = new Date(feedTime);
+      if (feedAny.type === 'BREAST') {
+        // Linked/paired rows count as one feeding (#198): time the timer against
+        // the whole nursing session, not just its latest row
+        const breastFeeds = activities.filter((a) =>
+          'amount' in a && (a as any).type === 'BREAST' && 'time' in a
+        ) as any[];
+        const session = groupBreastFeedSessions(breastFeeds)
+          .find(s => s.rows.some((r: any) => r.id === feedAny.id));
+        const rows: any[] = session?.rows ?? [feedAny];
+        // Prefer explicit startTime/endTime; `time` only equals the session end
+        // for newly logged feeds and can hold the start time after an edit
+        const startMs = Math.min(...rows.map(r => new Date(r.startTime || r.time).getTime()));
+        const endMs = Math.max(...rows.map(r => new Date(r.endTime || r.time).getTime()));
+        status.lastFeedTime = new Date(startMs);
+        status.lastFeedEndTime = new Date(endMs);
+      } else {
+        status.lastFeedTime = new Date(feedAny.time);
+      }
     }
 
     // Find last diaper time
@@ -182,6 +198,7 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
     } catch (error) {
       console.error('Error fetching activities for date:', error);
       setDateFilteredActivities([]);
+      setWindowActivities([]);
     } finally {
       if (isAnimated) {
         setIsLoadingActivities(false);
@@ -196,18 +213,39 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
     try {
       const activities = await activityCache.refreshDate(babyId, selectedDate);
       setDateFilteredActivities(activities);
+      // Rebuild the averages window from cache around the refreshed day. Must
+      // match fetchActivitiesForDate's span (avgDays + 1 back, 1 forward) or the
+      // running averages would collapse to a ±1 day baseline on every poll.
+      const windowActs: ActivityType[] = [];
+      for (let offset = -(avgDays + 1); offset <= 1; offset++) {
+        if (offset === 0) {
+          windowActs.push(...activities);
+          continue;
+        }
+        const day = new Date(selectedDate); day.setDate(day.getDate() + offset);
+        windowActs.push(...(activityCache.getActivitiesForDate(activityCache.toDateKey(day)) || []));
+      }
+      setWindowActivities(windowActs);
       lastRefreshTimestamp.current = Date.now();
 
-      // Only emit status when refreshing today's data
+      // Only emit status when refreshing today's data. Emit the full window so
+      // a nursing session that straddles midnight groups with its earlier row
       const todayKey = activityCache.toDateKey(new Date());
       const selectedKey = activityCache.toDateKey(selectedDate);
       if (todayKey === selectedKey) {
-        emitLatestStatus(activities);
+        // Status detection keeps its original ±1-day slice (see
+        // fetchActivitiesForDate) so stale unclosed records still age out
+        const statusWindowStart = new Date(selectedDate);
+        statusWindowStart.setDate(statusWindowStart.getDate() - 1);
+        statusWindowStart.setHours(0, 0, 0, 0);
+        emitLatestStatus(windowActs.filter(
+          (a) => new Date(getActivityTime(a)) >= statusWindowStart
+        ));
       }
     } catch (error) {
       console.error('Error refreshing current day:', error);
     }
-  }, [babyId, selectedDate, activityCache, emitLatestStatus]);
+  }, [babyId, selectedDate, activityCache, emitLatestStatus, avgDays]);
 
   const fetchHeatmapData = useCallback(async () => {
     if (!babyId) return;
@@ -433,7 +471,9 @@ const TimelineV2 = ({ babyId, refreshTrigger, onLatestStatusReady, onActivityDel
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-192px)]">
+    // app header (80px + 1px border) + activity tile row (117px) + 1px rounding margin —
+    // undershooting this budget gives the whole page a scrollbar
+    <div className="flex flex-col h-[calc(100vh-199px)]">
       {/* Daily Stats with Integrated Date Navigation */}
       <TimelineV2DailyStats
         activities={dateFilteredActivities}

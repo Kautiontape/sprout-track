@@ -14,6 +14,7 @@ import {
   LocationStat,
   MedicineStat,
 } from './reports.types';
+import { countBreastFeedSessions, BreastFeedLike } from '@/src/utils/feedSessionUtils';
 import SleepStatsSection from './SleepStatsSection';
 import FeedingStatsSection from './FeedingStatsSection';
 import DiaperStatsSection from './DiaperStatsSection';
@@ -232,6 +233,7 @@ const StatsTab: React.FC<StatsTabProps> = ({
           avgLeftAmount: 0,
           avgRightAmount: 0,
           unit: 'oz',
+          totalSessions: 0,
         },
         bath: {
           totalBaths: 0,
@@ -276,6 +278,8 @@ const StatsTab: React.FC<StatsTabProps> = ({
     let rightBreastMinutes = 0;
     let leftBreastCount = 0;
     let rightBreastCount = 0;
+    // Collected so linked/paired side entries count as one session (issue #198)
+    const breastFeedRows: BreastFeedLike[] = [];
     let solidsFeedCount = 0;
     const solidsAmounts: Record<string, number> = {};
     // Track by food type for averages
@@ -410,7 +414,8 @@ const StatsTab: React.FC<StatsTabProps> = ({
         const activityType = (activity as any).type;
 
         if (activityType === 'BOTTLE' || activityType === 'BREAST' || activityType === 'SOLIDS') {
-          totalFeeds++;
+          // BREAST rows are counted per session after the loop
+          if (activityType !== 'BREAST') totalFeeds++;
 
           if (activityType === 'BOTTLE') {
             bottleFeedCount++;
@@ -429,7 +434,7 @@ const StatsTab: React.FC<StatsTabProps> = ({
               bottleByType[bottleType].totalAmount += feedActivity.amount;
             }
           } else if (activityType === 'BREAST') {
-            breastFeedCount++;
+            breastFeedRows.push(activity as any);
             const feedActivity = activity as any;
             let feedMinutes = 0;
             if (feedActivity.feedDuration) {
@@ -629,6 +634,10 @@ const StatsTab: React.FC<StatsTabProps> = ({
       count: data.count,
     })).sort((a, b) => b.count - a.count);
 
+    // A left+right nursing session is stored as two rows but is one feed
+    breastFeedCount = countBreastFeedSessions(breastFeedRows);
+    totalFeeds += breastFeedCount;
+
     const avgLeftBreastMinutes = leftBreastCount > 0 ? Math.round(leftBreastMinutes / leftBreastCount) : 0;
     const avgRightBreastMinutes = rightBreastCount > 0 ? Math.round(rightBreastMinutes / rightBreastCount) : 0;
 
@@ -724,6 +733,7 @@ const StatsTab: React.FC<StatsTabProps> = ({
         avgLeftAmount: avgLeftPumpAmount,
         avgRightAmount: avgRightPumpAmount,
         unit: pumpUnit || 'oz',
+        totalSessions: pumpSessions,
       },
       bath: {
         totalBaths: bathCount,
@@ -881,7 +891,7 @@ const StatsTab: React.FC<StatsTabProps> = ({
   if (isLoading) {
     return (
       <div className={cn(styles.loadingContainer, "reports-loading-container")}>
-        <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
+        <Loader2 aria-hidden="true" className="h-8 w-8 animate-spin text-teal-600" />
         <p className={cn(styles.loadingText, "reports-loading-text")}>{t('Loading statistics...')}</p>
       </div>
     );

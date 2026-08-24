@@ -3,6 +3,7 @@ import prisma from '../../../../db';
 import { ApiResponse, MonthlyReport, GrowthMetric, GrowthChartData, GrowthChartPoint } from '../../../../types';
 import { withAuthContext, AuthResult } from '../../../../utils/auth';
 import { formatForResponse } from '../../../../utils/timezone';
+import { groupBreastFeedSessions, SESSION_TOLERANCE_MS } from '../../../../../../src/utils/feedSessionUtils';
 import {
   calculateZScore,
   zScoreToPercentile,
@@ -11,6 +12,7 @@ import {
   getTrend,
   getMonthRange,
   getDaysInMonth,
+  getEffectiveDays,
   getElapsedDays,
   isAbnormalColor,
   normalizeLocation,
@@ -61,13 +63,13 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
   const daysInMonth = getDaysInMonth(year, month);
   const now = new Date();
   const isCurrentMonth = now.getFullYear() === year && now.getMonth() + 1 === month;
-  const effectiveDays = isCurrentMonth ? getElapsedDays(year, month) : daysInMonth;
+  const effectiveDays = getEffectiveDays(year, month, baby.birthDate, now);
 
   // Also get date range for previous month (for deltas)
   const prevYear = month === 1 ? year - 1 : year;
   const prevMonth = month === 1 ? 12 : month - 1;
   const prevRange = getMonthRange(prevYear, prevMonth);
-  const prevDaysInMonth = getDaysInMonth(prevYear, prevMonth);
+  const prevEffectiveDays = getEffectiveDays(prevYear, prevMonth, baby.birthDate, now);
 
   // Calculate age at end of month
   const birthDate = new Date(baby.birthDate);
@@ -131,7 +133,10 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     prisma.measurement.findMany({ where: { ...baseWhere, type: 'HEAD_CIRCUMFERENCE' }, orderBy: { date: 'asc' } }),
 
     // Feeding
-    prisma.feedLog.findMany({ where: { ...baseWhere, time: { gte: start, lte: end } } }),
+    // Fetched with a pre-buffer so breast sessions starting just before the
+    // month boundary group with their in-month sibling row; non-breast metrics
+    // filter back to the exact month below
+    prisma.feedLog.findMany({ where: { ...baseWhere, time: { gte: new Date(start.getTime() - SESSION_TOLERANCE_MS), lte: end } } }),
     prisma.feedLog.findMany({ where: { ...baseWhere, time: { gte: prevRange.start, lte: prevRange.end } } }),
 
     // Sleep
@@ -409,9 +414,10 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
   const headChartData = buildChartData(allHeadCircumferences, 'head_circumference');
 
   // ─── Feeding ───
-  const bottleFeeds = feedLogs.filter(f => f.type === 'BOTTLE');
-  const solidsFeeds = feedLogs.filter(f => f.type === 'SOLIDS');
-  const breastFeeds = feedLogs.filter(f => f.type === 'BREAST');
+  // feedLogs includes a pre-month buffer for session grouping; scope other metrics to the month
+  const bottleFeeds = feedLogs.filter(f => f.type === 'BOTTLE' && f.time >= start);
+  const solidsFeeds = feedLogs.filter(f => f.type === 'SOLIDS' && f.time >= start);
+  const breastFeeds = feedLogs.filter(f => f.type === 'BREAST' && f.time >= start);
 
   const avgBottlesPerDay = effectiveDays > 0 ? Math.round((bottleFeeds.length / effectiveDays) * 10) / 10 : 0;
   const totalBottleAmount = bottleFeeds.reduce((sum, f) => sum + (f.amount || 0), 0);
@@ -426,7 +432,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     dailyBottleTotals[day] = (dailyBottleTotals[day] || 0) + (f.amount || 0);
   });
   const dailyIntakeValues = Object.values(dailyBottleTotals);
-  const avgDailyIntake = dailyIntakeValues.length > 0
+  const avgDailyIntake = dailyIntakeValues.length > 0 && effectiveDays > 0
     ? Math.round((dailyIntakeValues.reduce((a, b) => a + b, 0) / effectiveDays) * 10) / 10
     : 0;
 
@@ -438,8 +444,8 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     prevDailyBottleTotals[day] = (prevDailyBottleTotals[day] || 0) + (f.amount || 0);
   });
   const prevDailyIntakeValues = Object.values(prevDailyBottleTotals);
-  const prevAvgDailyIntake = prevDailyIntakeValues.length > 0
-    ? prevDailyIntakeValues.reduce((a, b) => a + b, 0) / prevDaysInMonth
+  const prevAvgDailyIntake = prevDailyIntakeValues.length > 0 && prevEffectiveDays > 0
+    ? prevDailyIntakeValues.reduce((a, b) => a + b, 0) / prevEffectiveDays
     : null;
 
   const dailyIntakeDelta = prevAvgDailyIntake !== null
@@ -457,20 +463,17 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
   const avgRightDuration = rightBreastFeeds.length > 0
     ? Math.round((rightBreastFeeds.reduce((sum, f) => sum + (f.feedDuration || 0), 0) / rightBreastFeeds.length / 60) * 10) / 10
     : 0;
-  const breastSessionDays: Record<string, Set<string>> = {};
-  breastFeeds.forEach(f => {
-    const day = f.time.toISOString().split('T')[0];
-    if (!breastSessionDays[day]) breastSessionDays[day] = new Set();
-    breastSessionDays[day].add(f.time.toISOString());
-  });
-  const totalBreastSessions = Object.values(breastSessionDays).reduce((sum, s) => sum + s.size, 0);
+  // Group over the buffered set so a session straddling the month boundary
+  // pairs correctly, then count only sessions that started inside the month
+  const totalBreastSessions = groupBreastFeedSessions(feedLogs)
+    .filter(s => s.time >= start && s.time <= end).length;
   const avgBreastSessionsPerDay = effectiveDays > 0
     ? Math.round((totalBreastSessions / effectiveDays) * 10) / 10
     : 0;
 
   // Feeding breakdown (by feed type: BOTTLE, BREAST, SOLIDS)
   const bottleCount = bottleFeeds.length;
-  const breastCount = breastFeeds.length;
+  const breastCount = totalBreastSessions;
   const solidsCount = solidsFeeds.length;
   const breakdownTotal = bottleCount + breastCount + solidsCount || 1;
 
@@ -534,11 +537,17 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
   // arithmetic local to the potty block only — the `diapers` block above,
   // and `dirtyDiapers` itself, are untouched.
   const pottyAnchorDate = pottyAnchor ? new Date(pottyAnchor.time) : null;
-  let pottyEffectiveDays = effectiveDays;
+  // Deliberately based on elapsed calendar days, NOT on `effectiveDays`.
+  // Upstream clamps `effectiveDays` to the days since birth; the EC anchor is
+  // its own, later clamp measured from the first-ever catch. Stacking the two
+  // would subtract the pre-birth days twice whenever EC starts in the baby's
+  // birth month. The two clamps stay independent by design.
+  const pottyMonthDays = isCurrentMonth ? getElapsedDays(year, month) : daysInMonth;
+  let pottyEffectiveDays = pottyMonthDays;
   if (pottyAnchorDate && pottyAnchorDate.getFullYear() === year && pottyAnchorDate.getMonth() + 1 === month) {
     // Anchor falls inside this month: inclusive day count from the anchor's
-    // day-of-month through effectiveDays (month end, or today if current).
-    pottyEffectiveDays = Math.max(1, effectiveDays - pottyAnchorDate.getDate() + 1);
+    // day-of-month through pottyMonthDays (month end, or today if current).
+    pottyEffectiveDays = Math.max(1, pottyMonthDays - pottyAnchorDate.getDate() + 1);
   } else if (
     pottyAnchorDate &&
     (pottyAnchorDate.getFullYear() > year || (pottyAnchorDate.getFullYear() === year && pottyAnchorDate.getMonth() + 1 > month))
@@ -548,7 +557,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     pottyEffectiveDays = 0;
   }
   // else: anchor predates this month entirely — the full month already
-  // counts, so pottyEffectiveDays stays equal to effectiveDays.
+  // counts, so pottyEffectiveDays stays equal to pottyMonthDays.
 
   // Poop catch share reads the diaper query's dirty count as its denominator —
   // arithmetic over already-fetched rows, never a write back into diaper stats.
@@ -579,7 +588,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
   // Tummy time delta
   const prevTummyTimeLogs = prevPlayLogs.filter(p => p.type === 'TUMMY_TIME');
   const prevTummyTimeMinutes = prevTummyTimeLogs.reduce((sum, p) => sum + (p.duration || 0), 0);
-  const prevAvgTummyTime = prevDaysInMonth > 0 ? prevTummyTimeMinutes / prevDaysInMonth : null;
+  const prevAvgTummyTime = prevEffectiveDays > 0 ? prevTummyTimeMinutes / prevEffectiveDays : null;
   const tummyTimeDelta = prevAvgTummyTime !== null
     ? { value: Math.round(avgTummyTimePerDay - prevAvgTummyTime), direction: getTrend(avgTummyTimePerDay, prevAvgTummyTime) }
     : null;

@@ -53,6 +53,11 @@ export interface PottyLocationSettings {
   hiddenLocations: string[];
 }
 
+// Bath type settings types
+export interface BathTypeSettings {
+  hiddenBathTypes: string[];
+}
+
 export interface ApiResponse<T = void> {
   success: boolean;
   data?: T;
@@ -78,6 +83,7 @@ export interface BabyCreate {
   feedWarningTime?: string;
   diaperWarningTime?: string;
   dayNightFlipConfig?: string; // JSON FlipConfig string
+  feedTimerFrom?: string;
 }
 
 export interface BabyUpdate extends Partial<BabyCreate> {
@@ -127,6 +133,7 @@ export interface FeedLogCreate {
   notes?: string;
   bottleType?: string;
   breastMilkAmount?: number;
+  sessionId?: string; // Links breast feeds belonging to the same nursing session
 }
 
 // Active breastfeed session types
@@ -245,6 +252,7 @@ export interface EmailConfigUpdate extends Partial<Omit<PrismaEmailConfig, 'id' 
 export interface BathLog {
   id: string;
   time: Date;
+  bathType: string | null;
   soapUsed: boolean;
   shampooUsed: boolean;
   notes: string | null;
@@ -265,6 +273,7 @@ export type BathLogResponse = Omit<BathLog, 'time' | 'createdAt' | 'updatedAt' |
 export interface BathLogCreate {
   babyId: string;
   time: string;
+  bathType?: string | null;
   soapUsed?: boolean;
   shampooUsed?: boolean;
   notes?: string;

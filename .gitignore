@@ -57,3 +57,6 @@ sitemap.xml
 .idea
 # Scratch schema for upstream-sync migration dry-runs
 prisma/sync-test.prisma
+
+bugfix-docs/
+temp-development-docs/

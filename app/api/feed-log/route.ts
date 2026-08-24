@@ -53,6 +53,7 @@ async function handlePost(req: NextRequest, authContext: AuthResult) {
       ...(body.unitAbbr && { unitAbbr: body.unitAbbr }),
       ...(body.side && { side: body.side }),
       ...(body.food && { food: body.food }),
+      ...(body.sessionId && { sessionId: body.sessionId }),
       // Handle notes and bottleType - convert empty strings to null, canonicalize casing
       notes: body.notes && body.notes.trim() ? body.notes : null,
       bottleType: normalizeBottleType(body.bottleType),

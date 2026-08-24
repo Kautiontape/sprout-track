@@ -23,7 +23,7 @@ export function ActivityTileIcon({
   if (isButton && styles.icon.defaultIcons[variant]) {
     icon = <img
       src={styles.icon.defaultIcons[variant]}
-      alt={variant}
+      alt=""
       width={64}
       height={64}
       className={cn("object-contain", styles.icon.base)}
@@ -65,7 +65,7 @@ export function ActivityTileIcon({
   if (!icon && styles.icon.defaultIcons[variant]) {
     icon = <img
       src={styles.icon.defaultIcons[variant]}
-      alt={variant}
+      alt=""
       width={64}
       height={64}
       className={cn("object-contain", styles.icon.base)}
@@ -73,7 +73,7 @@ export function ActivityTileIcon({
   }
   
   return (
-    <div className={cn(
+    <div aria-hidden="true" className={cn(
       styles.iconContainer.base,
       styles.iconContainer.variants[variant],
       className

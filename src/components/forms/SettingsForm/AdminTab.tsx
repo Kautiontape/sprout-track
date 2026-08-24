@@ -97,9 +97,10 @@ export default function AdminTab({
         </div>
 
         <div className="mt-4">
-          <Label className="form-label">{t('Security PIN')}</Label>
+          <Label className="form-label" htmlFor="adminSecurityPin">{t('Security PIN')}</Label>
           <div className="flex gap-2">
             <Input
+              id="adminSecurityPin"
               type="password"
               disabled
               value="••••••"
@@ -123,7 +124,7 @@ export default function AdminTab({
         {/* Caretaker Management */}
         <div className="mt-4">
           <div className="mb-4">
-            <Label className="form-label">{t('Manage Caretakers')}</Label>
+            <Label className="form-label" htmlFor="adminCaretakerSelect">{t('Manage Caretakers')}</Label>
             {localAuthType === 'SYSTEM' && (
               <p className="text-sm text-red-500 mt-1">{t('Caretaker logins are disabled in System PIN mode')}</p>
             )}
@@ -138,7 +139,7 @@ export default function AdminTab({
                     onSelectedCaretakerChange(caretaker || null);
                   }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="adminCaretakerSelect">
                     <SelectValue placeholder={t("Select a caretaker")} />
                   </SelectTrigger>
                   <SelectContent>
@@ -155,14 +156,14 @@ export default function AdminTab({
                 disabled={!selectedCaretaker}
                 onClick={() => onCaretakerFormOpen(true)}
               >
-                <Edit className="h-4 w-4 mr-2" />
+                <Edit className="h-4 w-4 mr-2" aria-hidden="true" />
                 {t('Edit')}
               </Button>
               <Button variant="outline" onClick={() => {
                 onSelectedCaretakerChange(null);
                 onCaretakerFormOpen(false);
               }}>
-                <Plus className="h-4 w-4 mr-2" />
+                <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
                 {t('Add')}
               </Button>
             </div>
@@ -176,7 +177,7 @@ export default function AdminTab({
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <Label className="form-label">{t('Enable Debug Session Timer')}</Label>
+              <Label className="form-label" htmlFor="enableDebugTimer">{t('Enable Debug Session Timer')}</Label>
               <p className="text-sm text-gray-500">{t('Shows JWT token expiration and user idle time')}</p>
             </div>
             <div className="flex items-center space-x-2">
@@ -192,7 +193,7 @@ export default function AdminTab({
 
           <div className="flex items-center justify-between">
             <div>
-              <Label className="form-label">{t('Enable Debug Timezone Tool')}</Label>
+              <Label className="form-label" htmlFor="enableDebugTimezone">{t('Enable Debug Timezone Tool')}</Label>
               <p className="text-sm text-gray-500">{t('Shows timezone information and DST status')}</p>
             </div>
             <div className="flex items-center space-x-2">

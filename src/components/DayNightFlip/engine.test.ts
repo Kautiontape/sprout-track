@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { resolveNow, rescueTiming, sleepState, ActivityFacts } from './engine';
 import { DEFAULT_FLIP_CONFIG, FlipConfig } from './protocol';

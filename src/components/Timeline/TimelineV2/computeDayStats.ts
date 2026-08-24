@@ -1,5 +1,7 @@
 import { ActivityType } from '../types';
 import { convertVolume } from '@/src/utils/unit-conversion';
+import { groupBreastFeedSessions, BreastFeedLike } from '@/src/utils/feedSessionUtils';
+import { isWetDiaper, isDirtyDiaper } from '@/src/utils/diaperStats';
 
 export interface DayStatsOptions {
   preferredUnit: string;
@@ -27,6 +29,9 @@ export interface DayStats {
   otherBottleTotal: number;
   leftBreastFeedMinutes: number;
   rightBreastFeedMinutes: number;
+  /** Food-log tries on the day (issue #203) — the source of truth for solids. */
+  foodCount: number;
+  /** Solids totals keyed by lowercase unit abbreviation, sourced from food logs. */
   solidsAmounts: Record<string, number>;
   wetCount: number;
   dirtyCount: number;
@@ -73,6 +78,7 @@ export function computeDayStats(
     otherBottleTotal: 0,
     leftBreastFeedMinutes: 0,
     rightBreastFeedMinutes: 0,
+    foodCount: 0,
     solidsAmounts: {},
     wetCount: 0,
     dirtyCount: 0,
@@ -93,6 +99,24 @@ export function computeDayStats(
   };
 
   activities.forEach(activity => {
+    // Food logs (issue #203) — `foodId` is unique to them. Solids live here now
+    // that legacy SOLIDS feeds are converted to food logs at startup, so they
+    // are counted on their own and never fold into the feed count.
+    if ('foodId' in activity) {
+      const foodLog = activity as any;
+      if (foodLog.deletedAt != null) return;
+      const time = new Date(foodLog.time);
+      if (time >= startOfDay && time <= endBound) {
+        stats.hasAnyActivity = true;
+        stats.foodCount++;
+        if (typeof foodLog.amount === 'number' && foodLog.amount > 0) {
+          const unit = (foodLog.unitAbbr || 'g').toLowerCase();
+          stats.solidsAmounts[unit] = (stats.solidsAmounts[unit] || 0) + foodLog.amount;
+        }
+      }
+      return; // Skip further checks for this activity
+    }
+
     // Play activities - check before sleep since both have duration, startTime, type
     if ('activities' in activity && 'type' in activity && PLAY_TYPES.includes((activity as any).type)) {
       const time = new Date((activity as any).startTime);
@@ -154,7 +178,7 @@ export function computeDayStats(
             stats.breastMilkBottleTotal += converted;
           } else if (bottleType === 'Formula') {
             stats.formulaBottleTotal += converted;
-          } else if (bottleType === 'Formula\\Breast') {
+          } else if (bottleType === 'Formula/Breast') {
             const bmConverted = convertVolume((activity as any).breastMilkAmount || 0, entryUnit, preferredUnit);
             stats.breastMilkBottleTotal += bmConverted;
             stats.formulaBottleTotal += Math.max(0, converted - bmConverted);
@@ -162,45 +186,7 @@ export function computeDayStats(
             // Milk, Other, or uncategorized
             stats.otherBottleTotal += converted;
           }
-        } else if (activity.type === 'SOLIDS') {
-          stats.hasAnyActivity = true;
-          stats.totalFeedCount++;
-          // Track solids amounts by unit
-          const unit = activity.unitAbbr || 'g';
-          if (!stats.solidsAmounts[unit]) {
-            stats.solidsAmounts[unit] = 0;
-          }
-          stats.solidsAmounts[unit] += activity.amount || 0;
         }
-      }
-    }
-
-    // Breast feed activities - track duration separately for left and right
-    if ('type' in activity && activity.type === 'BREAST') {
-      const time = new Date(activity.time);
-      if (time >= startOfDay && time <= endBound) {
-        stats.hasAnyActivity = true;
-        stats.totalFeedCount++;
-        // Track duration: prefer feedDuration (in seconds), fall back to amount (in minutes)
-        let feedMinutes = 0;
-        if ('feedDuration' in activity && activity.feedDuration) {
-          // Convert seconds to minutes
-          feedMinutes = Math.floor(activity.feedDuration / 60);
-        } else if ('amount' in activity && activity.amount) {
-          // Amount is already in minutes for older records
-          feedMinutes = activity.amount;
-        }
-
-        // Track by side if available
-        if ('side' in activity && activity.side) {
-          if (activity.side === 'LEFT') {
-            stats.leftBreastFeedMinutes += feedMinutes;
-          } else if (activity.side === 'RIGHT') {
-            stats.rightBreastFeedMinutes += feedMinutes;
-          }
-        }
-        // Note: If no side specified, we don't track it separately to avoid inaccuracy
-        // The feed is still counted in totalFeedCount
       }
     }
 
@@ -221,15 +207,11 @@ export function computeDayStats(
       const time = new Date(activity.time);
       if (time >= startOfDay && time <= endBound) {
         stats.hasAnyActivity = true;
-        // Count wet and dirty diapers exclusively
-        if (activity.type === 'WET') {
+        // Count wet and dirty diapers. BOTH counts as both; DRY as neither.
+        if (isWetDiaper(activity.type)) {
           stats.wetCount++;
-        } else if (activity.type === 'DIRTY') {
-          stats.dirtyCount++;
-          stats.poopCount++;
-        } else if (activity.type === 'BOTH') {
-          // BOTH counts as both wet and dirty
-          stats.wetCount++;
+        }
+        if (isDirtyDiaper(activity.type)) {
           stats.dirtyCount++;
           stats.poopCount++;
         }
@@ -333,6 +315,22 @@ export function computeDayStats(
       }
     }
   });
+
+  // Breast feeds: a left+right nursing session is stored as one row per side but
+  // is ONE feed (upstream issue #198). Grouping spans midnight, so it runs over
+  // the whole `activities` list and each session is attributed to the day it
+  // started. This only ever affects FEED counts — potty catches are counted
+  // per-row above and are never grouped or merged.
+  const breastRows = (activities as unknown as BreastFeedLike[])
+    .filter(a => a && typeof a === 'object' && 'type' in a && a.type === 'BREAST');
+  for (const session of groupBreastFeedSessions(breastRows)) {
+    if (session.time >= startOfDay && session.time <= endBound) {
+      stats.hasAnyActivity = true;
+      stats.totalFeedCount++;
+      stats.leftBreastFeedMinutes += Math.floor(session.leftDuration / 60);
+      stats.rightBreastFeedMinutes += Math.floor(session.rightDuration / 60);
+    }
+  }
 
   // Awake time: elapsed time (to the end bound) minus sleep
   const elapsedMinutes = Math.floor((endBound.getTime() - startOfDay.getTime()) / (1000 * 60));

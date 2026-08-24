@@ -29,17 +29,43 @@ import dynamic from 'next/dynamic';
 import { Loader2 } from 'lucide-react';
 import AccountExpirationBanner from '@/src/components/ui/account-expiration-banner';
 import NotificationSplashModal from '@/src/components/modals/NotificationSplashModal';
+import { PwaServiceWorker } from '@/src/components/PwaServiceWorker';
 import { checkPushSupport, checkSubscriptionStatus } from '@/src/lib/notifications/client';
+import { cacheDefaultBottleUnit } from '@/src/utils/defaultBottleUnit';
+import {
+  logoutDestination,
+  refreshAuthToken,
+  shouldIdleLogout,
+  validateFamilySlugWithRetry,
+} from '@/src/utils/session-timeout';
+import { navigateToShell } from '@/src/utils/native-bridge';
+import { isNativeApp } from '@/src/utils/native-app';
+import {
+  decideNativeRelock,
+  readReauthMarker,
+  writeReauthMarker,
+  clearReauthMarker,
+  type NativeRelockDecision,
+} from '@/src/utils/native-relock';
+import { consumeInjectedSession } from '@/src/utils/native-session';
+import { isSessionUnlocked } from '@/src/utils/session-state';
+// Loading fallback is a component so it can use the localization hook
+const PaymentModalLoading = () => {
+  const { t } = useLocalization();
+  return (
+    <div role="status" className="flex items-center justify-center p-4">
+      <Loader2 aria-hidden="true" className="h-6 w-6 animate-spin text-teal-600" />
+      <span className="sr-only">{t('Loading...')}</span>
+    </div>
+  );
+};
+
 // Lazy load PaymentModal to prevent Stripe initialization in self-hosted mode
 const PaymentModal = dynamic(
   () => import('@/src/components/account-manager/PaymentModal'),
-  { 
+  {
     ssr: false,
-    loading: () => (
-      <div className="flex items-center justify-center p-4">
-        <Loader2 className="h-6 w-6 animate-spin text-teal-600" />
-      </div>
-    )
+    loading: () => <PaymentModalLoading />
   }
 );
 
@@ -67,6 +93,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
   const [isUnlocked, setIsUnlocked] = useState(() => {
     // Only run this on client-side
     if (typeof window !== 'undefined') {
+      consumeInjectedSession(); // shell-handed session (native app): writes authToken/unlockTime, strips the fragment
       const unlockTime = localStorage.getItem('unlockTime');
       if (unlockTime && Date.now() - parseInt(unlockTime) <= 60 * 1000) {
         return true;
@@ -87,32 +114,49 @@ function AppContent({ children }: { children: React.ReactNode }) {
   const selectedBabyRef = useRef(selectedBaby);
   useEffect(() => { selectedBabyRef.current = selectedBaby; }, [selectedBaby]);
 
+  // Inside the native shell the web login must never be shown: if a family page
+  // loads locked (a handoff that didn't establish a session), hand control back
+  // to the shell so it can reconnect / re-authenticate. Computed once at mount;
+  // the loop guard falls back to the web login if repeated bounces don't stick.
+  const [relockDecision] = useState<NativeRelockDecision>(() => {
+    if (typeof window === 'undefined') return 'show-login';
+    // Must match the app's own answer (checkUnlockStatus below), not the
+    // 60s-fresh heuristic that seeds isUnlocked: this decision is taken once,
+    // synchronously, and acts irreversibly, so a pessimistic guess here bounces
+    // a valid session out of the app rather than being corrected on the next
+    // render. unlockTime is a last-activity stamp; its age is not a session
+    // lifetime.
+    const unlocked = isSessionUnlocked({
+      authToken: localStorage.getItem('authToken'),
+      unlockTime: localStorage.getItem('unlockTime'),
+    });
+    return decideNativeRelock({
+      unlocked,
+      native: isNativeApp(),
+      slug: familySlug,
+      marker: readReauthMarker(localStorage),
+      now: Date.now(),
+    });
+  });
+
+  useEffect(() => {
+    if (relockDecision !== 'return-to-shell') return;
+    writeReauthMarker(localStorage, { slug: familySlug, at: Date.now() });
+    navigateToShell({ type: 'sessionExpired' });
+  }, [relockDecision, familySlug]);
+
+  useEffect(() => {
+    if (isUnlocked) clearReauthMarker(localStorage);
+  }, [isUnlocked]);
+
   // Refresh the access token using the HTTP-only refresh token cookie
   const refreshAccessToken = useCallback(async (): Promise<boolean> => {
     if (isRefreshingRef.current) return false;
     isRefreshingRef.current = true;
 
     try {
-      const response = await fetch('/api/auth/refresh-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.data?.token) {
-          localStorage.setItem('authToken', data.data.token);
-          // Reset unlock time for PIN-based users
-          if (localStorage.getItem('unlockTime')) {
-            localStorage.setItem('unlockTime', Date.now().toString());
-          }
-          return true;
-        }
-      }
-      return false;
-    } catch (error) {
-      console.error('Error refreshing access token:', error);
-      return false;
+      // Shared single-flight refresh (also used by the global 401 interceptor)
+      return await refreshAuthToken();
     } finally {
       isRefreshingRef.current = false;
     }
@@ -128,11 +172,11 @@ function AppContent({ children }: { children: React.ReactNode }) {
     const ageInYears = Math.floor((today.getTime() - birthDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25));
     
     if (ageInMonths < 6) {
-      return `${ageInWeeks} weeks`;
+      return `${ageInWeeks} ${ageInWeeks === 1 ? t('week') : t('weeks')}`;
     } else if (ageInMonths < 24) {
-      return `${ageInMonths} months`;
+      return `${ageInMonths} ${ageInMonths === 1 ? t('month') : t('months')}`;
     } else {
-      return `${ageInYears} ${ageInYears === 1 ? 'year' : 'years'}`;
+      return `${ageInYears} ${ageInYears === 1 ? t('year') : t('years')}`;
     }
   };
 
@@ -160,12 +204,16 @@ function AppContent({ children }: { children: React.ReactNode }) {
       }
       
       const settingsResponse = await fetch(settingsUrl, {
+        cache: 'no-store',
         headers: authToken ? {
           'Authorization': `Bearer ${authToken}`
         } : {}
       });
       if (settingsResponse.ok) {
         const settingsData = await settingsResponse.json();
+        if (settingsData.success) {
+          cacheDefaultBottleUnit(settingsData.data?.defaultBottleUnit);
+        }
         if (settingsData.success && settingsData.data.familyName) {
           setFamilyName(settingsData.data.familyName);
         }
@@ -241,7 +289,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
                     router.push(`/${familySlug}/resume-setup`);
                     return;
                   } else {
-                    router.push('/');
+                    router.push('/?src=setup-locked');
                     return;
                   }
                 }
@@ -305,11 +353,13 @@ function AppContent({ children }: { children: React.ReactNode }) {
     }
   };
   
-  const handleLogout = async () => {
+  // `reason` becomes a short `src` query param on the destination so unexpected
+  // bounces to the homepage can be diagnosed from the resulting URL (issue #209)
+  const handleLogout = async (reason: string = 'logout-user') => {
     // Get the token to invalidate it server-side
     const token = localStorage.getItem('authToken');
     const currentCaretakerId = localStorage.getItem('caretakerId');
-    
+
     // Check if this is an account holder
     let isAccountAuth = false;
     if (token) {
@@ -361,14 +411,10 @@ function AppContent({ children }: { children: React.ReactNode }) {
     setSelectedBaby(null);
     setBabies([]);
     
-    // Account holders go to home page, PIN users go to family root (which shows login UI)
-    if (isAccountAuth) {
-      router.push('/');
-    } else if (familySlug) {
-      router.push(`/${familySlug}`);
-    } else {
-      router.push('/login');
-    }
+    // Account holders go to the home page with the login modal open,
+    // PIN users go to family root (which shows login UI)
+    if (navigateToShell({ type: 'loggedOut', reason })) return;
+    router.push(logoutDestination({ isAccountAuth, familySlug, reason }));
   };
 
 
@@ -461,26 +507,25 @@ function AppContent({ children }: { children: React.ReactNode }) {
     }
   }, [family?.id, pathname, familySlug]);
   
-  // Validate family slug exists
+  // Validate family slug exists. Transient failures (network hiccup, 5xx) are
+  // retried and never treated as "family not found" (issue #209, candidate 3).
   const validateFamilySlug = useCallback(async (slug: string) => {
-    try {
-      const response = await fetch(`/api/family/by-slug/${encodeURIComponent(slug)}`);
-      const data = await response.json();
-      
-      // If family doesn't exist, redirect to home
-      if (!data.success || !data.data) {
-        console.log(`Family slug "${slug}" not found, redirecting to home...`);
-        router.push('/');
-        return false;
-      }
-      
-      return true;
-    } catch (error) {
-      console.error('Error validating family slug:', error);
-      // On error, redirect to home to be safe
-      router.push('/');
+    const outcome = await validateFamilySlugWithRetry(slug);
+
+    if (outcome === 'not-found') {
+      // The API definitively answered that the family doesn't exist
+      console.log(`Family slug "${slug}" not found, redirecting to home...`);
+      router.push('/?src=slug-404');
       return false;
     }
+
+    if (outcome === 'transient') {
+      // Network/server hiccup — stay on the page instead of bouncing to home
+      console.error(`Could not validate family slug "${slug}" (transient error), staying on page`);
+      return false;
+    }
+
+    return true;
   }, [router]);
 
   // Validate family slug on mount
@@ -555,7 +600,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
             refreshAccessToken().then(success => {
               if (!success) {
                 console.log('Refresh failed, logging out...');
-                handleLogout();
+                handleLogout('logout-refresh-failed');
               }
             });
             return;
@@ -576,7 +621,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
         
       } catch (error) {
         console.error('Error parsing JWT token:', error);
-        handleLogout();
+        handleLogout('logout-jwt-error');
         return;
       }
       
@@ -584,15 +629,19 @@ function AppContent({ children }: { children: React.ReactNode }) {
       // (This check is skipped if we're already on root slug page due to early return above)
       // This code only runs for authenticated users on sub-routes
       
-      // Check for idle timeout (separate from token expiration)
-      if (unlockTime) {
-        const lastActivity = parseInt(unlockTime);
-        const idleTimeSeconds = parseInt(localStorage.getItem('idleTimeSeconds') || '1800', 10);
-        if (Date.now() - lastActivity > idleTimeSeconds * 1000) {
-          // Session expired due to inactivity, redirect to login
-          console.log('Session expired due to inactivity, logging out...');
-          handleLogout();
-        }
+      // Check for idle timeout (separate from token expiration).
+      // Account holders and system admins are exempt — their sessions are
+      // bounded by the refresh-token window, not the caretaker idle timeout.
+      if (shouldIdleLogout({
+        isAccountAuth,
+        isSysAdmin,
+        unlockTime,
+        idleTimeSeconds: localStorage.getItem('idleTimeSeconds'),
+        now: Date.now(),
+      })) {
+        // Session expired due to inactivity, redirect to login
+        console.log('Session expired due to inactivity, logging out...');
+        handleLogout('logout-idle');
       }
     };
     
@@ -704,23 +753,10 @@ function AppContent({ children }: { children: React.ReactNode }) {
       const authToken = localStorage.getItem('authToken');
       const unlockTime = localStorage.getItem('unlockTime');
 
-      // Check if user is authenticated via account or is a system admin
-      let isAccountAuth = false;
-      let isSysAdmin = false;
-      if (authToken) {
-        try {
-          const payload = authToken.split('.')[1];
-          const decodedPayload = JSON.parse(atob(payload));
-          isAccountAuth = decodedPayload.isAccountAuth || false;
-          isSysAdmin = decodedPayload.isSysAdmin || false;
-        } catch (error) {
-          console.error('Error parsing JWT token for unlock status:', error);
-        }
-      }
-
-      // Account holders and system admins are automatically unlocked, PIN-based users need unlockTime
-      const newUnlockState = !!(authToken && (isAccountAuth || isSysAdmin || unlockTime));
-      setIsUnlocked(newUnlockState);
+      // Account holders and system admins are automatically unlocked, PIN-based
+      // users need unlockTime. Shared with the native relock gate above so the
+      // two can't drift apart again.
+      setIsUnlocked(isSessionUnlocked({ authToken, unlockTime }));
       
       // Extract user information from JWT token
       if (authToken) {
@@ -781,7 +817,13 @@ function AppContent({ children }: { children: React.ReactNode }) {
   return (
     <>
       {shouldShowAppUI && (
-        <div className="min-h-screen flex">
+        <div className="h-dvh flex">
+          <a
+            href="#main-content"
+            className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-teal-700 focus:shadow-md"
+          >
+            {t('Skip to main content')}
+          </a>
           {/* Side Navigation - non-modal on wide screens */}
           {isWideScreen && (
             <SideNav
@@ -796,16 +838,21 @@ function AppContent({ children }: { children: React.ReactNode }) {
               onSettingsClick={() => {
                 setSettingsOpen(true);
               }}
-              onLogout={handleLogout}
+              onLogout={() => handleLogout()}
+              onSwitchFamily={
+                isNativeApp()
+                  ? () => navigateToShell({ type: 'loggedOut', reason: 'switch-family' })
+                  : undefined
+              }
               isAdmin={isAdmin}
-              className="h-screen sticky top-0"
+              className="h-dvh sticky top-0"
               familySlug={familySlug}
               familyName={family?.name || familyName}
             />
           )}
           
           {/* Main content area */}
-          <div className={`flex flex-col flex-1 min-h-screen ${isWideScreen ? 'w-[calc(100%-16rem)]' : 'w-full'}`}>
+          <div className={`flex flex-col flex-1 h-dvh ${isWideScreen ? 'w-[calc(100%-16rem)]' : 'w-full'}`}>
             <header className="w-full bg-gradient-to-r from-teal-600 to-teal-700 sticky top-0 z-40 pt-[env(safe-area-inset-top)]">
               <div className="mx-auto py-2">
                 <div className="flex justify-between items-center h-16"> {/* Fixed height for consistency */}
@@ -822,7 +869,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
                           alt="Sprout Logo"
                           width={64}
                           height={64}
-                          className="object-contain"
+                          className="object-contain drop-shadow-[2px_2px_3px_rgba(0,0,0,0.45)]"
                           priority
                         />
                       </SideNavTrigger>
@@ -846,7 +893,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
                           />
                         </div>
                       )}
-                      <span className="text-white text-sm font-medium">
+                      <h1 className="text-white text-sm font-medium">
                         {family?.name || familyName} - {pathname?.includes('/log-entry')
                           ? t('Log Entry')
                           : pathname?.includes('/calendar')
@@ -856,7 +903,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
                           : pathname?.includes('/rhythm')
                           ? t('Rhythm')
                           : t('Full Log')}
-                      </span>
+                      </h1>
                     </div>
                   </div>
                   <div className="flex items-center mr-4 sm:mr-6 lg:mr-8">
@@ -878,7 +925,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
             {/* Account Expiration Banner - shows for both account users and caretakers */}
             <AccountExpirationBanner isAccountAuth={isAccountAuth} />
             
-            <main className="flex-1 relative z-0">
+            <main id="main-content" className="flex-1 min-h-0 overflow-y-auto relative z-0">
               {children}
             </main>
           </div>
@@ -898,7 +945,12 @@ function AppContent({ children }: { children: React.ReactNode }) {
                 setSettingsOpen(true);
                 setSideNavOpen(false);
               }}
-              onLogout={handleLogout}
+              onLogout={() => handleLogout()}
+              onSwitchFamily={
+                isNativeApp()
+                  ? () => navigateToShell({ type: 'loggedOut', reason: 'switch-family' })
+                  : undefined
+              }
               isAdmin={isAdmin}
               familySlug={familySlug}
               familyName={family?.name || familyName}
@@ -908,7 +960,12 @@ function AppContent({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Show page content without app UI when on root slug page and not authenticated */}
-      {!shouldShowAppUI && (
+      {!shouldShowAppUI && relockDecision === 'return-to-shell' && (
+        // Returning to the shell to reconnect — render the plain backdrop, never
+        // the web login, while the WebView navigates back to the native app.
+        <div className="min-h-screen bg-gradient-to-r from-teal-600 to-teal-700 pt-[env(safe-area-inset-top)]" />
+      )}
+      {!shouldShowAppUI && relockDecision !== 'return-to-shell' && (
         <div className="min-h-screen bg-gradient-to-r from-teal-600 to-teal-700 pt-[env(safe-area-inset-top)]">
           {children}
         </div>
@@ -976,8 +1033,10 @@ export default function AppLayout({
 }: {
   children: React.ReactNode
 }) {
-  // Define handleLogout function within the layout scope
-  const handleLogout = async () => {
+  // Define handleLogout function within the layout scope.
+  // `reason` becomes a short `src` query param on the destination so unexpected
+  // bounces to the homepage can be diagnosed from the resulting URL (issue #209)
+  const handleLogout = async (reason: string = 'logout-user') => {
     // Get the token to invalidate it server-side
     const token = localStorage.getItem('authToken');
     const currentCaretakerId = localStorage.getItem('caretakerId');
@@ -1023,17 +1082,11 @@ export default function AppLayout({
       window.dispatchEvent(caretakerChangedEvent);
     }
 
-    // Redirect to home page for account holders or family root (which shows login UI) for PIN users
-    if (isAccountAuth) {
-      window.location.href = '/';
-    } else {
-      const familySlug = window.location.pathname.split('/')[1];
-      if (familySlug) {
-        window.location.href = `/${familySlug}`;
-      } else {
-        window.location.href = '/login';
-      }
-    }
+    // Redirect account holders to the home page (with the login modal open)
+    // and PIN users to family root (which shows login UI)
+    const familySlug = window.location.pathname.split('/')[1];
+    if (navigateToShell({ type: 'loggedOut', reason })) return;
+    window.location.href = logoutDestination({ isAccountAuth, familySlug, reason });
   };
 
   return (
@@ -1043,6 +1096,7 @@ export default function AppLayout({
           <BabyProvider>
             <ThemeProvider>
               <ToastProvider>
+                <PwaServiceWorker />
                 <DynamicTitle />
                 <AppContent>{children}</AppContent>
               </ToastProvider>

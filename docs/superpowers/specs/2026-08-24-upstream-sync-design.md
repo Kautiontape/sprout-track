@@ -178,7 +178,7 @@ conscious act rather than an autopilot one.
 Every rung: `tsc --noEmit`, `next build`, `scripts/check-missing-translations.js`
 clean. (`npm run lint` is known-broken and is not a gate.)
 
-Deep rungs add: `prisma migrate deploy` against `/db/sync-test.db` (a copy),
+Deep rungs add: `prisma migrate deploy` against `db/sync-test.db` (a copy),
 `npm run dev`, and a browser smoke test of the feature that rung touched.
 
 **At rung 1.4.0, wire up the tests.** Upstream introduces vitest there. Our six test
@@ -191,10 +191,10 @@ and potty stats for free.
 
 ## Data safety
 
-Before starting, back up `/db/baby-tracker.db` to
+Before starting, back up `db/baby-tracker.db` to
 `.pre-upstream-20260824-<hhmmss>.bak`, matching the existing `.pre-flip-` /
 `.pre-potty-` convention. Deep-rung migration testing runs against a copy at
-`/db/sync-test.db` via a `DATABASE_URL` override.
+`db/sync-test.db` via a `DATABASE_URL` override.
 
 Two upstream releases ship data migrations that rewrite existing rows — 1.6.0
 (solid feeds → food logs) and 1.6.2 (mixed bottle-type values). These are the rungs
@@ -234,6 +234,41 @@ Not in scope. Recorded so they are choices rather than oversights.
 - Cherry-picking ideas from upstream's **1.5.0 nursery redesign** into ours.
 - **Upstreaming** potty/EC tracking or day-night flip as contributions to
   Oak-and-Sprout.
+- **Translating the ~394 blank keys in each non-English locale** (~3,900 strings across
+  ten languages). `check-missing-translations.js` adds missing keys with empty values and
+  `t()` falls back to English, so nothing is broken — but CLAUDE.md asks that translations
+  be attempted after keys are added. Roughly 348 of those per locale are this fork's own
+  keys (potty, day-night flip, daily summary); the rest upstream never translated either.
+  Pre-existing debt, not created by this sync. Note that upstream's
+  `tests/translationFiles.test.ts` was reformulated during rung 1.6.5 to accommodate the
+  blanks; clearing this debt would let the original assertion stand.
+- **Fixing the fresh-install migration bug — confirmed, not theoretical.** Our
+  `20260721201741_add_daily_stats_avg_days` rebuilds `Settings` without upstream's
+  `bathTypeSettings`, `photoQuotaMB`, and `growthChartStandard`, mirroring the bug that
+  `20260801000000_restore_fork_settings_columns` fixes in the other direction.
+
+  Reproduced 2026-08-24 by starting the built container against an empty database:
+
+  ```
+  Error: P3018  A migration failed to apply.
+  The column `growthChartStandard` does not exist in the current database.
+  ```
+
+  Migrations **abort**, so a from-empty install does not merely lose a setting — the
+  container cannot come up at all.
+
+  **Existing deployments and the cutover rollback are unaffected.** `backup-db.sh` tars
+  the volume, so a restore returns an already-migrated database with its
+  `_prisma_migrations` history intact; `migrate deploy` then has nothing pending that
+  re-runs the offending migration. The failure only occurs when migrating from zero.
+
+  Why it needs its own design rather than a quick patch: a single static SQL migration
+  cannot repair both states, because on an existing database upstream's rebuild runs
+  *after* ours (it was pending) while on a fresh install it runs *before*. Adding columns
+  unconditionally fixes one state and errors in the other. Editing the original migration
+  breaks Prisma's checksum validation on every existing database. The likely shape is an
+  idempotent "ensure columns" step in `docker-startup.sh` ahead of `migrate deploy`,
+  following the same pattern as `scripts/convert-solids-feeds.js`.
 
 ## Out of scope
 

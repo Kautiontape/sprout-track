@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts';
 import { Scale, Ruler, CircleDot } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
@@ -10,13 +10,18 @@ import { useLocalization } from '@/src/context/localization';
 import { reportCardStyles as s } from './monthly-report-card.styles';
 import type { GrowthSummarySectionProps } from './monthly-report-card.types';
 import type { GrowthMetric, GrowthChartData } from '@/app/api/types';
+import { formatChartValue } from '@/src/utils/weightUnits';
+import {
+  buildGrowthChartYAxis,
+  formatGrowthChartAxisTick,
+} from '@/src/utils/growthChartAxis';
 
 type ChartType = 'weight' | 'length' | 'headCircumference';
 
-const chartTypeConfig: { type: ChartType; label: string; icon: React.ReactNode; cdcLabel: string }[] = [
-  { type: 'weight', label: 'Weight', icon: <Scale className="h-4 w-4" />, cdcLabel: 'Weight-for-age (CDC)' },
-  { type: 'length', label: 'Length', icon: <Ruler className="h-4 w-4" />, cdcLabel: 'Length-for-age (CDC)' },
-  { type: 'headCircumference', label: 'Head', icon: <CircleDot className="h-4 w-4" />, cdcLabel: 'Head circ.-for-age (CDC)' },
+const chartTypeConfig: { type: ChartType; label: string; icon: React.ReactNode }[] = [
+  { type: 'weight', label: 'Weight', icon: <Scale aria-hidden="true" className="h-4 w-4" /> },
+  { type: 'length', label: 'Length', icon: <Ruler aria-hidden="true" className="h-4 w-4" /> },
+  { type: 'headCircumference', label: 'Head', icon: <CircleDot aria-hidden="true" className="h-4 w-4" /> },
 ];
 
 // Percentile line colors matching GrowthChart.tsx
@@ -70,7 +75,7 @@ function MetricCard({ label, metric }: { label: string; metric: GrowthMetric | n
 
 /** Custom tooltip mirroring the GrowthChart.tsx tooltip:
  *  Shows the baby's percentile + value sandwiched between the two closest percentile curves */
-function GrowthChartTooltip({ active, payload, label, babyName, t }: any) {
+function GrowthChartTooltip({ active, payload, label, babyName, unit, t }: any) {
   if (!active || !payload?.length) return null;
 
   const measurementPoint = payload.find((p: any) => p.dataKey === 'measurement');
@@ -109,7 +114,7 @@ function GrowthChartTooltip({ active, payload, label, babyName, t }: any) {
         if (upper) {
           lines.push(
             <p key="upper" style={{ color: upper.color }}>
-              {upper.name}: {Number(upper.value).toFixed(2)}
+              {upper.name}: {formatChartValue(Number(upper.value), unit || '')}
             </p>
           );
         }
@@ -117,7 +122,7 @@ function GrowthChartTooltip({ active, payload, label, babyName, t }: any) {
         if (measPercentile !== undefined) {
           lines.push(
             <p key="meas" className="font-semibold text-orange-600">
-              {Number(measPercentile).toFixed(1)}%: {Number(measValue).toFixed(2)}
+              {Number(measPercentile).toFixed(1)}%: {formatChartValue(Number(measValue), unit || '')}
             </p>
           );
         }
@@ -125,7 +130,7 @@ function GrowthChartTooltip({ active, payload, label, babyName, t }: any) {
         if (lower) {
           lines.push(
             <p key="lower" style={{ color: lower.color }}>
-              {lower.name}: {Number(lower.value).toFixed(2)}
+              {lower.name}: {formatChartValue(Number(lower.value), unit || '')}
             </p>
           );
         }
@@ -158,16 +163,19 @@ function GrowthChartCard({
     );
   }
 
-  // Compute Y domain with padding
   const allValues = chartData.points.flatMap(p => [
-    p.p3, p.p97, ...(p.measurement !== undefined ? [p.measurement] : []),
+    p.p3,
+    p.p10,
+    p.p25,
+    p.p50,
+    p.p75,
+    p.p90,
+    p.p97,
+    p.measurement,
   ]);
-  const min = Math.min(...allValues);
-  const max = Math.max(...allValues);
-  const range = max - min;
-  const padding = range > 0 ? range * 0.1 : (max || 1) * 0.1;
-  const yMin = Math.max(0, min - padding);
-  const yMax = max + padding;
+  const unit = chartData.unit || '';
+  const yAxis = buildGrowthChartYAxis(allValues, unit);
+  const latestMeasurement = chartData.points.findLast(point => point.measurement !== undefined);
 
   return (
     <div className={cn(s.card, 'report-card-card report-card-chart')}>
@@ -184,10 +192,26 @@ function GrowthChartCard({
             />
             <YAxis
               tick={{ fontSize: 11 }}
-              domain={[yMin, yMax]}
-              tickFormatter={(v: number) => Number(v).toFixed(0)}
+              domain={yAxis.domain}
+              ticks={yAxis.ticks}
+              tickFormatter={(value: number) => formatGrowthChartAxisTick(value, yAxis.step, unit)}
             />
-            <Tooltip content={<GrowthChartTooltip babyName={babyName} t={t} />} />
+            <Tooltip content={<GrowthChartTooltip babyName={babyName} unit={unit} t={t} />} />
+
+            {latestMeasurement?.measurement !== undefined && (
+              <ReferenceLine
+                y={latestMeasurement.measurement}
+                stroke="#f97316"
+                strokeWidth={1.25}
+                strokeDasharray="6 4"
+                label={{
+                  value: `${t('Last Entry')}: ${formatChartValue(latestMeasurement.measurement, unit)} ${unit}`,
+                  position: 'insideTopRight',
+                  fill: '#c2410c',
+                  fontSize: 10,
+                }}
+              />
+            )}
 
             {/* Percentile curves */}
             {percentileLines.map(line => (
@@ -224,10 +248,19 @@ function GrowthChartCard({
 }
 
 const GrowthSummarySection: React.FC<GrowthSummarySectionProps & { isPdfExport?: boolean }> = ({
-  growth, babyName, isPdfExport,
+  growth, growthStandard, babyName, isPdfExport,
 }) => {
   const { t } = useLocalization();
   const [activeChart, setActiveChart] = useState<ChartType>('weight');
+
+  const chartTitle = (type: ChartType, standard: 'CDC' | 'WHO'): string => {
+    const keys: Record<ChartType, { CDC: string; WHO: string }> = {
+      weight: { CDC: 'Weight-for-age (CDC)', WHO: 'Weight-for-age (WHO)' },
+      length: { CDC: 'Length-for-age (CDC)', WHO: 'Length-for-age (WHO)' },
+      headCircumference: { CDC: 'Head circ.-for-age (CDC)', WHO: 'Head circ.-for-age (WHO)' },
+    };
+    return keys[type][standard];
+  };
 
   const hasAnyMeasurement = growth.weight || growth.length || growth.headCircumference;
   const hasAnyChartData = growth.chartData.weight.points.length > 0
@@ -239,7 +272,6 @@ const GrowthSummarySection: React.FC<GrowthSummarySectionProps & { isPdfExport?:
   }
 
   const activeChartData = growth.chartData[activeChart];
-  const activeConfig = chartTypeConfig.find(c => c.type === activeChart)!;
 
   return (
     <>
@@ -261,13 +293,13 @@ const GrowthSummarySection: React.FC<GrowthSummarySectionProps & { isPdfExport?:
       {isPdfExport ? (
         <>
           {growth.chartData.weight.points.length > 0 && (
-            <GrowthChartCard chartData={growth.chartData.weight} title="Weight-for-age (CDC)" babyName={babyName} disableAnimation />
+            <GrowthChartCard chartData={growth.chartData.weight} title={chartTitle('weight', growthStandard)} babyName={babyName} disableAnimation />
           )}
           {growth.chartData.length.points.length > 0 && (
-            <GrowthChartCard chartData={growth.chartData.length} title="Length-for-age (CDC)" babyName={babyName} disableAnimation />
+            <GrowthChartCard chartData={growth.chartData.length} title={chartTitle('length', growthStandard)} babyName={babyName} disableAnimation />
           )}
           {growth.chartData.headCircumference.points.length > 0 && (
-            <GrowthChartCard chartData={growth.chartData.headCircumference} title="Head circ.-for-age (CDC)" babyName={babyName} disableAnimation />
+            <GrowthChartCard chartData={growth.chartData.headCircumference} title={chartTitle('headCircumference', growthStandard)} babyName={babyName} disableAnimation />
           )}
         </>
       ) : (
@@ -297,7 +329,7 @@ const GrowthSummarySection: React.FC<GrowthSummarySectionProps & { isPdfExport?:
 
           {/* Active chart */}
           {activeChartData.points.length > 0 && (
-            <GrowthChartCard chartData={activeChartData} title={activeConfig.cdcLabel} babyName={babyName} />
+            <GrowthChartCard chartData={activeChartData} title={chartTitle(activeChart, growthStandard)} babyName={babyName} />
           )}
         </>
       )}

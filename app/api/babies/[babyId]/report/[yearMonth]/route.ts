@@ -3,6 +3,17 @@ import prisma from '../../../../db';
 import { ApiResponse, MonthlyReport, GrowthMetric, GrowthChartData, GrowthChartPoint } from '../../../../types';
 import { withAuthContext, AuthResult } from '../../../../utils/auth';
 import { formatForResponse } from '../../../../utils/timezone';
+import { toCdcWeightKg, fromCdcWeightKg } from '@/src/utils/weightUnits';
+import { isDirtyDiaper } from '@/src/utils/diaperStats';
+import { effectiveGrowthStandard } from '@/src/utils/growthStandard';
+import { groupBreastFeedSessions, SESSION_TOLERANCE_MS } from '../../../../../../src/utils/feedSessionUtils';
+import {
+  buildNewFoodsForRange,
+  computeFoodProgress,
+  deriveAllergens,
+  deriveFeedAllergens,
+  mergeAllergens,
+} from '../../../../../../src/utils/foodLogUtils';
 import {
   calculateZScore,
   zScoreToPercentile,
@@ -11,6 +22,7 @@ import {
   getTrend,
   getMonthRange,
   getDaysInMonth,
+  getEffectiveDays,
   getElapsedDays,
   isAbnormalColor,
   normalizeLocation,
@@ -61,13 +73,13 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
   const daysInMonth = getDaysInMonth(year, month);
   const now = new Date();
   const isCurrentMonth = now.getFullYear() === year && now.getMonth() + 1 === month;
-  const effectiveDays = isCurrentMonth ? getElapsedDays(year, month) : daysInMonth;
+  const effectiveDays = getEffectiveDays(year, month, baby.birthDate, now);
 
   // Also get date range for previous month (for deltas)
   const prevYear = month === 1 ? year - 1 : year;
   const prevMonth = month === 1 ? 12 : month - 1;
   const prevRange = getMonthRange(prevYear, prevMonth);
-  const prevDaysInMonth = getDaysInMonth(prevYear, prevMonth);
+  const prevEffectiveDays = getEffectiveDays(prevYear, prevMonth, baby.birthDate, now);
 
   // Calculate age at end of month
   const birthDate = new Date(baby.birthDate);
@@ -107,6 +119,11 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     // Medicine / Supplements
     medicineLogs,
     vaccines,
+    // Foods & allergens (all-time — first tries and the static allergen profile)
+    allFoodLogs,
+    allFoods,
+    manualAllergens,
+    reactionFeedLogs,
     // All log counts for days tracked + caretaker activity
     feedDates,
     sleepDates,
@@ -131,7 +148,10 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     prisma.measurement.findMany({ where: { ...baseWhere, type: 'HEAD_CIRCUMFERENCE' }, orderBy: { date: 'asc' } }),
 
     // Feeding
-    prisma.feedLog.findMany({ where: { ...baseWhere, time: { gte: start, lte: end } } }),
+    // Fetched with a pre-buffer so breast sessions starting just before the
+    // month boundary group with their in-month sibling row; non-breast metrics
+    // filter back to the exact month below
+    prisma.feedLog.findMany({ where: { ...baseWhere, time: { gte: new Date(start.getTime() - SESSION_TOLERANCE_MS), lte: end } } }),
     prisma.feedLog.findMany({ where: { ...baseWhere, time: { gte: prevRange.start, lte: prevRange.end } } }),
 
     // Sleep
@@ -158,6 +178,29 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     // Medicine logs with medicine info
     prisma.medicineLog.findMany({ where: { ...baseWhere, time: { gte: start, lte: end } }, include: { medicine: true } }),
     prisma.vaccineLog.findMany({ where: { ...baseWhere, time: { gte: start, lte: end } }, orderBy: { time: 'asc' } }),
+
+    // All-time food logs (first-ever tries must consider the full history)
+    prisma.foodLog.findMany({
+      where: baseWhere,
+      select: {
+        foodId: true,
+        foods: true,
+        time: true,
+        amount: true,
+        unitAbbr: true,
+        enjoyment: true,
+        hadReaction: true,
+        reactionDescription: true,
+        food: { select: { id: true, name: true, commonAllergen: true } },
+      },
+    }),
+    // Include soft-deleted foods so historical reactions keep their names
+    prisma.food.findMany({ where: { familyId: userFamilyId }, select: { id: true, name: true, commonAllergen: true } }),
+    prisma.babyAllergen.findMany({ where: baseWhere }),
+    prisma.feedLog.findMany({
+      where: { ...baseWhere, hadReaction: true },
+      select: { time: true, food: true, hadReaction: true, reactionDescription: true, reactionCause: true },
+    }),
 
     // Dates for days tracked (select only the time/date field for counting distinct dates)
     prisma.feedLog.findMany({ where: { ...baseWhere, time: { gte: start, lte: end } }, select: { time: true, caretakerId: true } }),
@@ -196,31 +239,29 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
   // Fetch family settings for display units
   const familySettings = await prisma.settings.findFirst({
     where: { familyId: userFamilyId },
-    select: { defaultWeightUnit: true, defaultHeightUnit: true },
+    select: { defaultWeightUnit: true, defaultHeightUnit: true, growthChartStandard: true },
   });
   const displayWeightUnit = (familySettings?.defaultWeightUnit || 'LB').toUpperCase();
   const displayHeightUnit = (familySettings?.defaultHeightUnit || 'IN').toUpperCase();
+  // Choose the standard for the whole report from the baby's age at the end of the
+  // report month; WHO past 24 months automatically falls back to CDC.
+  const reportAgeMonths = ageInMonths(birthDate, endOfMonth);
+  const growthStandard = effectiveGrowthStandard(familySettings?.growthChartStandard, reportAgeMonths);
 
-  // Unit conversion helpers (matching GrowthChart.tsx logic)
+  // Unit conversion helpers (weight math shared with GrowthChart via weightUnits)
   function toCdcUnit(value: number, unit: string, type: 'weight' | 'length' | 'head_circumference'): number {
-    const u = (unit || '').toUpperCase().trim();
     if (type === 'weight') {
-      if (u === 'LB') return value * 0.453592;
-      if (u === 'OZ') return value * 0.0283495;
-      if (u === 'G') return value / 1000;
-      return value; // assume kg
+      return toCdcWeightKg(value, unit);
     }
     // length / head_circumference — CDC uses cm
+    const u = (unit || '').toUpperCase().trim();
     if (u === 'IN') return value * 2.54;
     return value; // assume cm
   }
 
   function fromCdcUnit(value: number, type: 'weight' | 'length' | 'head_circumference'): number {
     if (type === 'weight') {
-      if (displayWeightUnit === 'LB') return value / 0.453592;
-      if (displayWeightUnit === 'OZ') return value / 0.0283495;
-      if (displayWeightUnit === 'G') return value * 1000;
-      return value; // kg
+      return fromCdcWeightKg(value, displayWeightUnit);
     }
     // length / head — convert from cm to display unit
     if (displayHeightUnit === 'IN') return value / 2.54;
@@ -253,11 +294,23 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     };
   }
 
-  // Pre-fetch all CDC rows for all 3 measurement types (for both metrics and charts)
+  // Pre-fetch all growth chart rows for all 3 measurement types (for both metrics and charts)
+  const growthWhere = sex ? { sex } : undefined;
+  const growthOrder = { orderBy: { ageMonths: 'asc' } as const };
+  const isWho = growthStandard === 'WHO';
   const [allCdcWeight, allCdcLength, allCdcHead] = await Promise.all([
-    sex ? prisma.cdcWeightForAge.findMany({ where: { sex }, orderBy: { ageMonths: 'asc' } }) : Promise.resolve([]),
-    sex ? prisma.cdcLengthForAge.findMany({ where: { sex }, orderBy: { ageMonths: 'asc' } }) : Promise.resolve([]),
-    sex ? prisma.cdcHeadCircumferenceForAge.findMany({ where: { sex }, orderBy: { ageMonths: 'asc' } }) : Promise.resolve([]),
+    sex ? (isWho
+      ? prisma.whoWeightForAge.findMany({ where: growthWhere, ...growthOrder })
+      : prisma.cdcWeightForAge.findMany({ where: growthWhere, ...growthOrder })
+    ) : Promise.resolve([]),
+    sex ? (isWho
+      ? prisma.whoLengthForAge.findMany({ where: growthWhere, ...growthOrder })
+      : prisma.cdcLengthForAge.findMany({ where: growthWhere, ...growthOrder })
+    ) : Promise.resolve([]),
+    sex ? (isWho
+      ? prisma.whoHeadCircumferenceForAge.findMany({ where: growthWhere, ...growthOrder })
+      : prisma.cdcHeadCircumferenceForAge.findMany({ where: growthWhere, ...growthOrder })
+    ) : Promise.resolve([]),
   ]);
 
   function getCdcRows(cdcTable: 'weight' | 'length' | 'head_circumference') {
@@ -343,7 +396,8 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     measurements: typeof allWeights,
     cdcTable: 'weight' | 'length' | 'head_circumference'
   ): GrowthChartData {
-    if (!sex || measurements.length === 0) return { points: [] };
+    const displayUnit = (cdcTable === 'weight' ? displayWeightUnit : displayHeightUnit).toLowerCase();
+    if (!sex || measurements.length === 0) return { points: [], unit: displayUnit };
 
     const cdcRows = getCdcRows(cdcTable).filter(r => r.ageMonths <= maxAgeMonths + 1);
 
@@ -401,7 +455,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
       }
       points.push(point);
     }
-    return { points };
+    return { points, unit: displayUnit };
   }
 
   const weightChartData = buildChartData(allWeights, 'weight');
@@ -409,9 +463,10 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
   const headChartData = buildChartData(allHeadCircumferences, 'head_circumference');
 
   // ─── Feeding ───
-  const bottleFeeds = feedLogs.filter(f => f.type === 'BOTTLE');
-  const solidsFeeds = feedLogs.filter(f => f.type === 'SOLIDS');
-  const breastFeeds = feedLogs.filter(f => f.type === 'BREAST');
+  // feedLogs includes a pre-month buffer for session grouping; scope other metrics to the month
+  const bottleFeeds = feedLogs.filter(f => f.type === 'BOTTLE' && f.time >= start);
+  const solidsFeeds = feedLogs.filter(f => f.type === 'SOLIDS' && f.time >= start);
+  const breastFeeds = feedLogs.filter(f => f.type === 'BREAST' && f.time >= start);
 
   const avgBottlesPerDay = effectiveDays > 0 ? Math.round((bottleFeeds.length / effectiveDays) * 10) / 10 : 0;
   const totalBottleAmount = bottleFeeds.reduce((sum, f) => sum + (f.amount || 0), 0);
@@ -426,7 +481,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     dailyBottleTotals[day] = (dailyBottleTotals[day] || 0) + (f.amount || 0);
   });
   const dailyIntakeValues = Object.values(dailyBottleTotals);
-  const avgDailyIntake = dailyIntakeValues.length > 0
+  const avgDailyIntake = dailyIntakeValues.length > 0 && effectiveDays > 0
     ? Math.round((dailyIntakeValues.reduce((a, b) => a + b, 0) / effectiveDays) * 10) / 10
     : 0;
 
@@ -438,8 +493,8 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     prevDailyBottleTotals[day] = (prevDailyBottleTotals[day] || 0) + (f.amount || 0);
   });
   const prevDailyIntakeValues = Object.values(prevDailyBottleTotals);
-  const prevAvgDailyIntake = prevDailyIntakeValues.length > 0
-    ? prevDailyIntakeValues.reduce((a, b) => a + b, 0) / prevDaysInMonth
+  const prevAvgDailyIntake = prevDailyIntakeValues.length > 0 && prevEffectiveDays > 0
+    ? prevDailyIntakeValues.reduce((a, b) => a + b, 0) / prevEffectiveDays
     : null;
 
   const dailyIntakeDelta = prevAvgDailyIntake !== null
@@ -457,20 +512,17 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
   const avgRightDuration = rightBreastFeeds.length > 0
     ? Math.round((rightBreastFeeds.reduce((sum, f) => sum + (f.feedDuration || 0), 0) / rightBreastFeeds.length / 60) * 10) / 10
     : 0;
-  const breastSessionDays: Record<string, Set<string>> = {};
-  breastFeeds.forEach(f => {
-    const day = f.time.toISOString().split('T')[0];
-    if (!breastSessionDays[day]) breastSessionDays[day] = new Set();
-    breastSessionDays[day].add(f.time.toISOString());
-  });
-  const totalBreastSessions = Object.values(breastSessionDays).reduce((sum, s) => sum + s.size, 0);
+  // Group over the buffered set so a session straddling the month boundary
+  // pairs correctly, then count only sessions that started inside the month
+  const totalBreastSessions = groupBreastFeedSessions(feedLogs)
+    .filter(s => s.time >= start && s.time <= end).length;
   const avgBreastSessionsPerDay = effectiveDays > 0
     ? Math.round((totalBreastSessions / effectiveDays) * 10) / 10
     : 0;
 
   // Feeding breakdown (by feed type: BOTTLE, BREAST, SOLIDS)
   const bottleCount = bottleFeeds.length;
-  const breastCount = breastFeeds.length;
+  const breastCount = totalBreastSessions;
   const solidsCount = solidsFeeds.length;
   const breakdownTotal = bottleCount + breastCount + solidsCount || 1;
 
@@ -504,7 +556,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     .sort((a, b) => (b.nightCount + b.napCount) - (a.nightCount + a.napCount));
 
   // ─── Diapers ───
-  const dirtyDiapers = diaperLogs.filter(d => d.type === 'DIRTY' || d.type === 'BOTH');
+  const dirtyDiapers = diaperLogs.filter(d => isDirtyDiaper(d.type));
   const blowoutCount = diaperLogs.filter(d => d.blowout).length;
   const creamCount = diaperLogs.filter(d => d.creamApplied).length;
   const creamApplicationRate = diaperLogs.length > 0 ? Math.round((creamCount / diaperLogs.length) * 100) : 0;
@@ -534,11 +586,17 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
   // arithmetic local to the potty block only — the `diapers` block above,
   // and `dirtyDiapers` itself, are untouched.
   const pottyAnchorDate = pottyAnchor ? new Date(pottyAnchor.time) : null;
-  let pottyEffectiveDays = effectiveDays;
+  // Deliberately based on elapsed calendar days, NOT on `effectiveDays`.
+  // Upstream clamps `effectiveDays` to the days since birth; the EC anchor is
+  // its own, later clamp measured from the first-ever catch. Stacking the two
+  // would subtract the pre-birth days twice whenever EC starts in the baby's
+  // birth month. The two clamps stay independent by design.
+  const pottyMonthDays = isCurrentMonth ? getElapsedDays(year, month) : daysInMonth;
+  let pottyEffectiveDays = pottyMonthDays;
   if (pottyAnchorDate && pottyAnchorDate.getFullYear() === year && pottyAnchorDate.getMonth() + 1 === month) {
     // Anchor falls inside this month: inclusive day count from the anchor's
-    // day-of-month through effectiveDays (month end, or today if current).
-    pottyEffectiveDays = Math.max(1, effectiveDays - pottyAnchorDate.getDate() + 1);
+    // day-of-month through pottyMonthDays (month end, or today if current).
+    pottyEffectiveDays = Math.max(1, pottyMonthDays - pottyAnchorDate.getDate() + 1);
   } else if (
     pottyAnchorDate &&
     (pottyAnchorDate.getFullYear() > year || (pottyAnchorDate.getFullYear() === year && pottyAnchorDate.getMonth() + 1 > month))
@@ -548,7 +606,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     pottyEffectiveDays = 0;
   }
   // else: anchor predates this month entirely — the full month already
-  // counts, so pottyEffectiveDays stays equal to effectiveDays.
+  // counts, so pottyEffectiveDays stays equal to pottyMonthDays.
 
   // Poop catch share reads the diaper query's dirty count as its denominator —
   // arithmetic over already-fetched rows, never a write back into diaper stats.
@@ -579,7 +637,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
   // Tummy time delta
   const prevTummyTimeLogs = prevPlayLogs.filter(p => p.type === 'TUMMY_TIME');
   const prevTummyTimeMinutes = prevTummyTimeLogs.reduce((sum, p) => sum + (p.duration || 0), 0);
-  const prevAvgTummyTime = prevDaysInMonth > 0 ? prevTummyTimeMinutes / prevDaysInMonth : null;
+  const prevAvgTummyTime = prevEffectiveDays > 0 ? prevTummyTimeMinutes / prevEffectiveDays : null;
   const tummyTimeDelta = prevAvgTummyTime !== null
     ? { value: Math.round(avgTummyTimePerDay - prevAvgTummyTime), direction: getTrend(avgTummyTimePerDay, prevAvgTummyTime) }
     : null;
@@ -641,6 +699,19 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
     date: formatForResponse(v.time) || v.time.toISOString(),
   }));
 
+  // ─── Foods & Allergens (issue #203 follow-up / #247 multi-food) ───
+  const foodsById = Object.fromEntries(allFoods.map(f => [f.id, f]));
+  const foodLogsForMath = allFoodLogs.map(log => ({ ...log, foodsById }));
+  const newFoods = buildNewFoodsForRange(foodLogsForMath, start, end);
+  const foodProgress = computeFoodProgress(foodLogsForMath);
+  // Static (not month-dependent): every known allergen — derived from
+  // reaction-flagged food/feed logs plus manually recorded entries
+  const knownAllergens = mergeAllergens(
+    deriveAllergens(foodLogsForMath, allFoods),
+    manualAllergens,
+    deriveFeedAllergens(reactionFeedLogs)
+  );
+
   // ─── Caretaker activity ───
   const caretakerCounts = new Map<string, number>();
   const countCaretaker = (caretakerId: string | null) => {
@@ -696,6 +767,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
       daysTracked,
       isCurrentMonth,
     },
+    growthStandard,
     growth: {
       weight: weightMetric,
       length: lengthMetric,
@@ -758,6 +830,12 @@ async function handleGet(req: NextRequest, authContext: AuthResult): Promise<Nex
       medicines,
       vaccines: vaccineList,
     },
+    foods: {
+      newFoods,
+      newFoodCount: newFoods.length,
+      uniqueFoodCount: foodProgress.uniqueFoodCount,
+    },
+    allergens: knownAllergens,
     caretakers,
   };
 

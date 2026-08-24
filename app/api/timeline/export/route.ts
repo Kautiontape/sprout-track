@@ -4,6 +4,7 @@ import { ApiResponse } from '../../types';
 import { withAuthContext, AuthResult } from '../../utils/auth';
 import { toUTC, formatForResponse } from '../../utils/timezone';
 import { objectArrayToCsv } from '../../utils/csv-export';
+import { legacyOzToLb } from '@/src/utils/weightUnits';
 import * as ExcelJS from 'exceljs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -33,6 +34,7 @@ function getActivityDateTime(activity: any): string {
 
 // Determine activity type from shape
 function detectActivityType(activity: any): string {
+  if ('foodId' in activity) return 'food'; // food logs (issue #203)
   if ('duration' in activity && 'type' in activity && ('location' in activity || 'quality' in activity)) return 'sleep';
   if ('amount' in activity && 'type' in activity && ('side' in activity || 'food' in activity || 'feedDuration' in activity || 'bottleType' in activity)) return 'feed';
   // Potty must be checked before diaper: a PottyLog has `type` but none of the
@@ -67,6 +69,7 @@ function getActivityTypeName(type: string, translations: Record<string, string>)
     'medicine': 'Medicine',
     'play': 'Activity',
     'vaccine': 'Vaccine',
+    'food': 'Food',
   };
   return t(typeNames[type] || type, translations);
 }
@@ -88,6 +91,7 @@ function getSubType(activity: any, type: string, translations: Record<string, st
       if (activity.type === 'WET') return t('Wet', translations);
       if (activity.type === 'DIRTY') return t('Dirty', translations);
       if (activity.type === 'BOTH') return t('Both', translations);
+      if (activity.type === 'DRY') return t('Dry', translations);
       return activity.type || '';
     case 'potty':
       // Potty reuses the DiaperType enum but with Pee/Poop labels, never Wet/Dirty —
@@ -115,6 +119,12 @@ function getSubType(activity: any, type: string, translations: Record<string, st
       return activity.type || '';
     case 'breast-milk-adjustment':
       return activity.reason ? t(activity.reason, translations) : '';
+    case 'food': {
+      const enjoymentLabels: Record<string, string> = {
+        HATED: 'Hated', DISLIKED: 'Disliked', NEUTRAL: 'Neutral', LIKED: 'Liked', LOVED: 'Loved',
+      };
+      return activity.enjoyment ? t(enjoymentLabels[activity.enjoyment] || activity.enjoyment, translations) : '';
+    }
     default:
       return '';
   }
@@ -155,6 +165,14 @@ function getAmount(activity: any, type: string): string {
     case 'medicine':
       return activity.doseAmount != null ? String(activity.doseAmount) : '';
     case 'measurement':
+      if (
+        activity.type === 'WEIGHT' &&
+        activity.value != null &&
+        (activity.unit || '').toLowerCase().trim() === 'oz'
+      ) {
+        // Legacy total-ounce weights export as decimal pounds for consistency
+        return String(legacyOzToLb(activity.value));
+      }
       return activity.value != null ? String(activity.value) : '';
     case 'breast-milk-adjustment':
       return activity.amount != null ? String(activity.amount) : '';
@@ -171,6 +189,9 @@ function getUnit(activity: any, type: string): string {
     case 'breast-milk-adjustment':
       return activity.unitAbbr || '';
     case 'measurement':
+      if (activity.type === 'WEIGHT' && (activity.unit || '').toLowerCase().trim() === 'oz') {
+        return 'lb';
+      }
       return activity.unit || '';
     default:
       return '';
@@ -219,6 +240,13 @@ function getDetails(activity: any, type: string, translations: Record<string, st
       break;
     case 'note':
       if (activity.category) parts.push(`${t('Category', translations)}: ${activity.category}`);
+      break;
+    case 'food':
+      if (activity.food?.name) parts.push(activity.food.name);
+      if (activity.food?.commonAllergen) parts.push(t('Common allergen', translations));
+      if (activity.hadReaction) {
+        parts.push(`${t('Reaction', translations)}${activity.reactionDescription ? `: ${activity.reactionDescription}` : ''}`);
+      }
       break;
   }
   return parts.join('; ');
@@ -362,7 +390,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
     const shouldFetch = (type: string) => !filter || filter === type;
     const emptyPromise = Promise.resolve([]);
 
-    const [sleepLogs, feedLogs, diaperLogs, pottyLogs, noteLogs, bathLogs, pumpLogs, playLogs, milestoneLogs, measurementLogs, medicineLogs, breastMilkAdjustments, vaccineLogs] = await Promise.all([
+    const [sleepLogs, feedLogs, diaperLogs, pottyLogs, noteLogs, bathLogs, pumpLogs, playLogs, milestoneLogs, measurementLogs, medicineLogs, breastMilkAdjustments, vaccineLogs, foodLogs] = await Promise.all([
       shouldFetch('sleep') ? prisma.sleepLog.findMany({
         where: {
           babyId,
@@ -474,6 +502,14 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
         include: { caretaker: true },
         orderBy: { time: 'desc' },
       }) : emptyPromise,
+      shouldFetch('food') ? prisma.foodLog.findMany({
+        where: {
+          babyId, familyId, deletedAt: null,
+          ...(startDateUTC && endDateUTC ? { time: { gte: startDateUTC, lte: endDateUTC } } : {}),
+        },
+        include: { caretaker: true, food: { select: { id: true, name: true, commonAllergen: true } } },
+        orderBy: { time: 'desc' },
+      }) : emptyPromise,
     ]);
 
     // Format all activities with caretaker names
@@ -505,6 +541,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
       ...medicineLogs.map(formatLog),
       ...breastMilkAdjustments.map(formatLog),
       ...vaccineLogs.map(formatLog),
+      ...foodLogs.map(formatLog),
     ].sort((a, b) => getActivityTime(b) - getActivityTime(a));
 
     // Build export rows

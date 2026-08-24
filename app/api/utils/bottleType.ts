@@ -11,8 +11,8 @@
 const CANONICAL_BOTTLE_TYPES: Record<string, string> = {
   'formula': 'Formula',
   'breast milk': 'Breast Milk',
-  'formula\\breast': 'Formula\\Breast',
-  'formula/breast': 'Formula\\Breast',
+  'formula\\breast': 'Formula/Breast',
+  'formula/breast': 'Formula/Breast',
   'milk': 'Milk',
   'other': 'Other',
 };

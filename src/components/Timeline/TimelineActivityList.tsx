@@ -43,7 +43,7 @@ const TimelineActivityList = ({
         case 'sleep':
           return 'duration' in activity;
         case 'feed':
-          return 'amount' in activity;
+          return 'amount' in activity && !('foodId' in activity);
         case 'diaper':
           return 'condition' in activity;
         case 'note':
@@ -411,12 +411,12 @@ const TimelineActivityList = ({
                                 <CardContent className="p-4">
                                   <div className="flex items-center space-x-3">
                                     {/* Activity Icon */}
-                                    <div className={`flex-shrink-0 ${style.bg} p-2 rounded-xl shadow-sm`}>
+                                    <div className={`flex-shrink-0 ${style.bg} p-2 rounded-xl shadow-sm timeline-card-activity-icon`}>
                                       {getActivityIcon(activity)}
                                     </div>
                                     
                                     {/* Activity Content */}
-                                    <div className="flex-1 min-w-0" onClick={() => {
+                                    <button type="button" className="flex-1 min-w-0 text-left" onClick={() => {
                                       // Add a small delay to allow the click animation to be visible
                                       setTimeout(() => onActivitySelect(activity), 0);
                                     }}>
@@ -438,12 +438,14 @@ const TimelineActivityList = ({
                                                 word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
                                               ).join(' ') : '';
                                             const duration = activity.duration ? `${Math.floor(activity.duration / 60)}h ${activity.duration % 60}m` : '';
-                                            const quality = ('quality' in activity && activity.quality) ? 
+                                            const quality = ('quality' in activity && activity.quality) ?
                                               activity.quality.charAt(0).toUpperCase() + activity.quality.slice(1).toLowerCase() : '';
-                                            return [location, duration, quality].filter(Boolean).join(' • ');
+                                            const notes = ('notes' in activity && activity.notes) ?
+                                              (activity.notes.length > 30 ? activity.notes.substring(0, 30) + '...' : activity.notes) : '';
+                                            return [location, duration, quality, notes].filter(Boolean).join(' • ');
                                           }
                                           
-                                          if ('amount' in activity) {
+                                          if ('amount' in activity && !('foodId' in activity)) {
                                             // Feed activity
                                             if (activity.type === 'BREAST') {
                                               const side = activity.side ? activity.side.charAt(0) + activity.side.slice(1).toLowerCase() : '';
@@ -491,6 +493,12 @@ const TimelineActivityList = ({
                                             }
                                             if (activity.creamApplied) {
                                               details.push(t('Diaper Cream Applied'));
+                                            }
+                                            if ((activity as any).notes) {
+                                              const notes = (activity as any).notes.length > 30 ?
+                                                (activity as any).notes.substring(0, 30) + '...' :
+                                                (activity as any).notes;
+                                              details.push(notes);
                                             }
                                             return details.join(' • ');
                                           }
@@ -566,7 +574,7 @@ const TimelineActivityList = ({
                                             return t('Activity logged');
                                         })()}
                                       </p>
-                                    </div>
+                                    </button>
                                   </div>
                                 </CardContent>
                               </Card>
@@ -583,9 +591,9 @@ const TimelineActivityList = ({
             <div className="absolute inset-0 flex items-center justify-center h-full">
               <div className="text-center p-6">
                 <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-indigo-100 flex items-center justify-center">
-                  <BabyIcon className="h-8 w-8 text-indigo-600" />
+                  <BabyIcon className="h-8 w-8 text-indigo-600" aria-hidden="true" />
                 </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-1 timeline-empty-state">{t('No activities recorded')}</h3>
+                <h2 className="text-lg font-medium text-gray-900 mb-1 timeline-empty-state">{t('No activities recorded')}</h2>
                 <p className="text-sm text-gray-500 timeline-empty-description">
                   {t('Activities will appear here once you start tracking')}
                 </p>

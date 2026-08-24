@@ -4,6 +4,8 @@
 
 Sprout Track is a Progressive Web App with push notification support, Wake Lock API integration, and a dedicated nursery mode designed for wall-mounted tablets. The PWA architecture enables offline-capable, app-like behavior on mobile and desktop browsers.
 
+> **Running inside the native app?** When the web app is loaded by the Capacitor mobile shell, three things in this document behave differently: the service worker is not registered, wake lock is driven natively by the shell observing the WebView URL rather than by anything in this app, and notifications are delivered through a second native channel (FCM on Android, direct APNs on iOS) rather than the service worker. See [Native App Integration](./NativeAppIntegration.md).
+
 ## PWA Installation
 
 ### Dynamic Manifest
@@ -31,6 +33,8 @@ The PWA manifest is generated dynamically per family so that "Add to Home Screen
 **File:** `public/sw.js`
 
 The service worker handles push notification display and click behavior. It is minimal — focused on notifications rather than offline caching.
+
+Registration is gated by `shouldRegisterServiceWorker()` (`src/utils/native-app.ts`): it requires service worker support, a secure context, **and** that the app is not running inside the native shell. Inside the shell there is nothing to install and native push does not route through the service worker.
 
 ### Push Event Handling
 When a push notification arrives:
@@ -73,6 +77,8 @@ Supports `skip-waiting` for immediate activation of updated service workers.
    Fields: endpoint, p256dh, auth, familyId, caretakerId/accountId
 ```
 
+The `NotificationSplashModal` component (`src/components/modals/NotificationSplashModal/`) walks users through this flow — permission request, subscription, and initial per-baby preference setup — using the client helpers in `src/lib/notifications/client.ts`.
+
 ### Notification Preferences
 Granular control per subscription, per baby, per event type:
 
@@ -108,15 +114,46 @@ Runs on a schedule (via Docker dcron) to check for overdue timers:
 
 | Timer Type | Source | Threshold |
 |------------|--------|-----------|
-| Feed timer | Last `FeedLog.time` | `Baby.feedWarningTime` (default "03:00") |
+| Feed timer | Last `FeedLog.time` (breast feeds use `startTime`) | `Baby.feedWarningTime` (default "03:00") |
 | Diaper timer | Last `DiaperLog.time` | `Baby.diaperWarningTime` (default "02:00") |
 | Medicine timer | Last `MedicineLog.time` | `Medicine.doseMinTime` |
+
+The feed timer check is skipped while a baby has an active breastfeeding session (`ActiveBreastFeed`).
 
 For each expired timer:
 1. Finds subscriptions with matching `NotificationPreference` (event type + baby)
 2. Checks `timerIntervalMinutes` to avoid notification spam
 3. Sends push notification
 4. Updates `lastTimerNotifiedAt`
+
+#### Feedback Replies
+**File:** `src/lib/notifications/feedbackHook.ts`
+
+When an admin replies to user feedback, a push notification is sent directly to all of the author's active subscriptions, bypassing the `NotificationPreference` system.
+
+### Native Push Channel
+
+Alongside every web-push send site above, the same payload is delivered to native
+device tokens by the `src/lib/notifications/nativePush.ts` dispatcher. **iOS does
+not go through Firebase** — Android uses FCM HTTP v1 (`fcmPush.ts`), iOS uses
+direct APNs over HTTP/2 (`apnsPush.ts`). Each transport no-ops independently when
+its own credentials are absent, and an unconfigured platform is skipped rather
+than recorded as a failed delivery. The two channels are independent and
+complementary:
+
+| | Web push | Native push |
+|---|---|---|
+| Transport | Web Push / VAPID | FCM HTTP v1 (Android) / direct APNs (iOS) |
+| Stored as | `PushSubscription` | `DeviceToken` |
+| Registered by | `src/lib/notifications/client.ts` (service worker) | the shell — `src/services/push.ts` in `mobile-app-v1`, posted to `/api/notifications/device-tokens` |
+| Enabled by | `NotificationConfig` + VAPID keys | `FCM_SERVICE_ACCOUNT_JSON` (Android) / `APNS_*` env vars (iOS) |
+| Display | `public/sw.js` | OS notification centre |
+| Logged in `NotificationLog` | Yes | No |
+
+Native sends are fire-and-forget beside the web-push call, and reuse the matched
+`NotificationPreference` and its localized payload — there is no separate
+preference surface. An unconfigured deployment no-ops with zero network calls.
+Full detail in [Native App Integration](./NativeAppIntegration.md).
 
 ### Failure Handling
 - `PushSubscription.failureCount` increments on send failure
@@ -144,6 +181,10 @@ Prevents the device screen from sleeping. Critical for nursery mode where a tabl
 - Re-acquires when page becomes visible again (after tab switch)
 - Gracefully handles browsers that don't support the API
 - Provides `isActive` and `isSupported` status
+
+The mechanism is resolved by `chooseWakeLockMechanism()` (`src/utils/native-app.ts`), which still has a `KeepAwake` branch — but the shell no longer ships that plugin, so in practice it resolves to `navigator.wakeLock` or unsupported. `isSupported` reflects the resolved mechanism, not the browser API alone.
+
+**Inside the native shell, nothing in this app drives the wake lock.** The shell's JS stops running once the WebView is handed to the server, so keep-awake and immersive mode for nursery mode are driven natively by observing the WebView URL — `NurseryAwareViewController.swift` (KVO on `webView.url`) and `NurseryAwareWebViewClient.java` (`doUpdateVisitedHistory`) in `mobile-app-v1`. Changing the nursery route means changing those two files.
 
 ## Fullscreen API
 
@@ -189,10 +230,10 @@ The `useNurseryColors` hook generates a complete HSLA color palette from the set
 
 ## Docker Notification Setup
 
-Push notifications are enabled via Docker build arg:
+Push notifications are controlled via Docker build arg (enabled by default):
 
 ```dockerfile
-ARG ENABLE_NOTIFICATIONS=false
+ARG ENABLE_NOTIFICATIONS=true
 ```
 
 When enabled:
@@ -211,13 +252,19 @@ When enabled:
 - `public/manifest.json` — Static PWA manifest (root/marketing page)
 - `app/api/manifest/[slug]/route.ts` — Dynamic family-scoped manifest endpoint
 - `public/sw.js` — Service worker (push events, notification clicks)
-- `src/lib/notifications/push.ts` — Push notification sending
+- `src/lib/notifications/push.ts` — Push notification sending (web push / VAPID)
+- `src/lib/notifications/nativePush.ts` — Native push dispatcher (token query, per-platform routing, lifecycle)
+- `src/lib/notifications/fcmPush.ts` — Android transport (FCM HTTP v1)
+- `src/lib/notifications/apnsPush.ts` — iOS transport (direct APNs over HTTP/2, no Firebase)
+- `app/api/notifications/device-tokens/route.ts` — Native token registration endpoint (the shell registers; this app does not)
 - `src/lib/notifications/activityHook.ts` — Activity-triggered notifications
 - `src/lib/notifications/timerCheck.ts` — Timer expiration checks
+- `src/lib/notifications/feedbackHook.ts` — Feedback reply notifications
 - `src/lib/notifications/config.ts` — VAPID key management
 - `src/lib/notifications/client.ts` — Client-side notification API
 - `src/lib/notifications/i18n.ts` — Notification translations
 - `src/lib/notifications/cleanup.ts` — Log retention cleanup
+- `src/components/modals/NotificationSplashModal/` — Onboarding UI for enabling notifications
 - `src/hooks/useWakeLock.ts` — Wake Lock API hook
 - `src/hooks/useFullscreen.ts` — Fullscreen API hook
 - `src/hooks/useNurserySettings.ts` — Nursery settings management

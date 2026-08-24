@@ -10,6 +10,7 @@ These rules define the development patterns, conventions, and architecture for S
 - TailwindCSS: For utility-first styling (no CSS Modules, no Styled Components).
 - React Hooks (useState, useEffect, useContext): Used for all client-side state management, data fetching, and form handling.
 - PWA architecture with offline support, push notifications (VAPID), and Wake Lock API.
+- A companion Capacitor iOS/Android shell (separate repo) loads this app in its WebView; a native-aware layer in `src/utils/native-*.ts` adapts behavior when it detects the shell. See “Native Mobile Shell” below.
 
 ## Project Structure
 
@@ -18,7 +19,7 @@ These rules define the development patterns, conventions, and architecture for S
   - `ui/` — base UI primitives (button, input, etc.), each with their own folder containing `index.tsx`, `styles.ts`, `types.ts`, `.css`, and `README.md`
   - `forms/` — form components built on top of `ui/` form page components
   - `modals/` — modal components
-  - Feature components live in their own named folders at the component root (e.g., `Calendar/`, `Timeline/`, `Reports/`, `DailyStats/`, `BabySelector/`, `SetupWizard/`) — there is no `features/` directory
+  - Feature components live in their own named folders at the component root (e.g., `Calendar/`, `Timeline/`, `Reports/`, `DailyStats/`, `BabySelector/`, `SetupWizard/`), with some grouped under `features/` (e.g., `features/nursery-mode/`)
   - Domain management components: `account-manager/`, `familymanager/`
 - Keep component files, styles, types, and documentation together in the same folder
 - Include README.md files for components documenting props, usage, and implementation details
@@ -142,6 +143,27 @@ export const GET = withAuthContext(handler);
 - Once regular caretakers are configured, the system caretaker is automatically disabled for that family
 - System caretakers and settings are created on-demand during auth if they don’t exist
 
+### Settled: account tokens in URLs are accepted
+
+Reviews keep flagging “a token in the URL reaches access logs.” Accepted across
+all three cases — do not propose moving them to fragments, POST bodies, or
+headers, and do not propose stripping them via `replaceState`.
+
+- `/setup/{token}` — not a credential at all. `FamilySetup.password` gates it,
+  `expiresAt` bounds it, and `app/api/setup/validate-token/route.ts` rejects any
+  token whose `familyId` is set, so the link dies when setup completes.
+- `/passwordreset?token=` — 128-bit (`randomBytes(16)`), 15-minute TTL,
+  single-use (cleared in the same update as the new password hash), and every
+  rejection feeds the shared IP lockout.
+- `/verify?token=` — single-use, cleared in the same update that sets
+  `verified: true`. Verification issues no session and grants no access; it
+  flips a boolean.
+
+The query-string placement is deliberate: Universal/App Links match on **path**
+and a fragment is not part of that match, so the native shell can only claim
+`/verify*` and `/passwordreset*` if the route is a real path. See
+`app/api/utils/account-emails.ts`.
+
 ## Form Handling
 
 - Forms use standard React state management with `useState` and `useEffect` — React Hook Form is not used in this project
@@ -164,6 +186,7 @@ export const GET = withAuthContext(handler);
 - Supported languages are configured in `src/localization/supported-languages.json`
 - English (`en.json`) is the fallback — always add keys here first
 - After adding or modifying keys, run `node scripts/check-missing-translations.js` to add missing keys to all other language files and sort everything
+- Once missing keys have been added to non-en.json files try to translate other translation files to their respective language as best as you can.
 
 ### Adding new user-facing text
 
@@ -183,12 +206,77 @@ export const GET = withAuthContext(handler);
 - `GET /api/localization` — returns current user’s language preference (requires JWT auth)
 - `PUT /api/localization` — updates language preference, body: `{ "language": "es" }` (validates ISO 639-1 code, checks write permissions for expired accounts)
 
+## Native Mobile Shell
+
+A Capacitor iOS/Android shell (separate repo, `mobile-app-v1`) loads **this** web app
+into its WebView. After pairing and login the shell hands the WebView over, so every
+screen the user sees in the app is this Next.js app. Full architecture:
+`documentation/Architecture-Documentation/NativeAppIntegration.md`.
+
+### The invariant
+
+**Every native-aware branch is gated on detection of the shell's user agent and must
+no-op in a normal browser.** Web users see no behavior change. If a change can't
+honor that, it doesn't belong in this layer.
+
+- Detection: `isNativeApp()` / `detectNativeApp(ua)` from `@/src/utils/native-app` —
+  matches the UA suffix `SproutTrackApp/<version> (ios|android)`.
+- Keep new logic as **pure functions in `src/utils/`** with a thin browser entry point,
+  so it's testable in the node-env Vitest setup (this is why `photoUtils`,
+  `shell-chrome`, `native-relock` etc. are shaped the way they are).
+
+### Rules that have bitten us
+
+- **Never read `isNativeApp()` inline during render.** It depends on `navigator`, so
+  it's `false` during SSR and true after hydration → hydration mismatch. Read it in a
+  `useEffect` into state (`inShell`), as `SideNav` and `AccountSettingsTab` do.
+- **Native ≠ plugin available.** The Capacitor bridge is only injected on allow-listed
+  hosts, so `isNativeApp() === true` with `getCapacitorPlugin(x) === null` is real.
+  Every plugin path needs a fallback (see `openExternal`).
+- **`src/utils/bridge-contract.ts` is vendored — do not edit it here.** Change
+  `mobile-app-v1/shared/bridge-contract.ts` first, re-copy, and ship both in the same
+  commit set. `tests/bridge-contract.test.ts` has a byte-for-byte drift guard.
+- **The web login must never render inside the shell.** If a family page loads locked,
+  `native-relock.ts` bounces back to the shell (with a 15 s loop guard). Don't add a
+  code path that renders login markup without consulting `decideNativeRelock`.
+- **App-store payment compliance is not optional.** No payment UI may be reachable in
+  the shell: gate on `src/utils/shell-chrome.ts` and **don't mount** `PaymentModal` /
+  `PaymentHistory` (not merely hide them). Subscription management links out via
+  `openExternal(MANAGE_SUBSCRIPTION_URL)`.
+- **Logout hands off, it doesn't navigate.** Use `if (navigateToShell({ type:
+  'loggedOut', reason })) return;` before the normal `router.push` — it returns `false`
+  in a browser, so one code path serves both.
+- Native push sits **beside** VAPID web push and is fire-and-forget at each send
+  site. `nativePush.ts` is the dispatcher; `fcmPush.ts` (Android) and `apnsPush.ts`
+  (iOS, direct APNs — **no Firebase on iOS**) are pure transports. Each no-ops
+  independently when its own credentials are absent, and an unconfigured platform
+  is **skipped**, never recorded as a delivery failure. Don't make web push depend
+  on any of it.
+- **A `NotificationPreference` no longer requires a `PushSubscription`.** A WebView
+  cannot create one (no Push API), so binding them meant an app-only user received
+  nothing, ever. Owner columns live on the preference; `resolvePreferenceOwner`
+  treats the subscription as authoritative **when present** so web behavior is
+  unchanged. `familyId` is nullable on purpose — Postgres deploys via `prisma db
+  push`, which can't add a required column to a populated table.
+- **Prisma drops a *nested* empty `OR`.** `{ familyId, OR: [] }` compiles to
+  `1=0`; `{ OR: [{ familyId, OR: [] }] }` compiles to a bare `familyId = ?` and
+  leaks every owner's rows. `buildPreferencesWhere` short-circuits to
+  `id: { in: [] }` instead. Verify scoping by reading generated SQL, not by
+  inspecting the query object — a test asserting the object literal proves nothing.
+- Device-token routes follow the golden rule: ownership comes only from
+  `authContext`. The one exception is `DELETE /api/notifications/device-tokens`,
+  which is **unauthenticated by design** — the token authenticates itself, and the
+  shell has no JWT when a family is removed.
+
 ## Testing
 
-- Write tests for all components, custom hooks, and services
-- Test error and loading states
+- Tests run with Vitest (`npm test` / `npm run test:watch`) and live in the top-level `tests/` folder as `*.test.ts` files (node environment, `@/` path alias available)
+- **Every new change or feature must include test scoping**: as part of planning any change, identify what new behavior needs tests and write them alongside the implementation — new functionality without tests is incomplete
+- **Review existing test coverage before adding tests**: check `tests/` for existing files covering the same area — update or extend them when behavior changes, and avoid duplicating coverage that already exists
+- Extract non-trivial logic (grouping, validation, calculations, data shaping) into pure functions in `src/utils/` or route-adjacent helper modules so it can be unit tested without a database or React renderer
+- Prefer test-first: write the failing test, watch it fail, then implement until green
+- Test error and edge cases, not just the happy path (empty inputs, whitespace, boundary values)
 - Verify accessibility features
-- Test responsive layouts
 - Implement integration tests for complex features
 
 ## Code Modification Guidelines

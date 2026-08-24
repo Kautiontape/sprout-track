@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { DiaperType } from '@prisma/client';
 import { DiaperLogResponse } from '@/app/api/types';
 import { Button } from '@/src/components/ui/button';
 import { Input } from '@/src/components/ui/input';
 import { DateTimePicker } from '@/src/components/ui/date-time-picker';
 import { Checkbox } from '@/src/components/ui/checkbox';
+import { Textarea } from '@/src/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -24,6 +25,7 @@ import { useToast } from '@/src/components/ui/toast';
 import { handleExpirationError } from '@/src/lib/expiration-error-handler';
 import { useParams } from 'next/navigation';
 import { useLocalization } from '@/src/context/localization';
+import { isDirtyDiaper } from '@/src/utils/diaperStats';
 
 interface DiaperFormProps {
   isOpen: boolean;
@@ -43,6 +45,7 @@ export default function DiaperForm({
   onSuccess,
 }: DiaperFormProps) {
   const { t } = useLocalization();
+  const formId = useId();
   const { toUTCString } = useTimezone();
   const { showToast } = useToast();
   const params = useParams();
@@ -69,6 +72,7 @@ export default function DiaperForm({
     color: '',
     blowout: false,
     creamApplied: false,
+    notes: '',
   });
   const [loading, setLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -120,6 +124,7 @@ export default function DiaperForm({
           color: activity.color || '',
           blowout: activity.blowout || false,
           creamApplied: activity.creamApplied || false,
+          notes: activity.notes || '',
         });
         
         // Store the initial time used for editing
@@ -188,10 +193,13 @@ export default function DiaperForm({
         babyId,
         time: utcTimeString, // Send the UTC ISO string instead of local time
         type: formData.type,
-        condition: formData.condition || null,
-        color: formData.color || null,
+        // Condition/color only apply when there's contents — clear stale values from a
+        // previous type instead of carrying them into a WET/DRY log (e.g. DIRTY -> DRY).
+        condition: isDirtyDiaper(formData.type) ? (formData.condition || null) : null,
+        color: isDirtyDiaper(formData.type) ? (formData.color || null) : null,
         blowout: formData.blowout,
         creamApplied: formData.creamApplied,
+        notes: formData.notes || null,
       };
 
       // Get auth token from localStorage
@@ -236,6 +244,7 @@ export default function DiaperForm({
         color: '',
         blowout: false,
         creamApplied: false,
+        notes: '',
       });
     } catch (error) {
       console.error('Error saving diaper log:', error);
@@ -267,7 +276,7 @@ export default function DiaperForm({
             
             {/* Type Selection - Full width on all screens */}
             <div>
-              <label className="form-label">{t('Type')}</label>
+              <label htmlFor={`${formId}-type`} className="form-label">{t('Type')}</label>
               <Select
                 value={formData.type || ''}
                 onValueChange={(value: DiaperType) =>
@@ -275,13 +284,14 @@ export default function DiaperForm({
                 }
                 disabled={loading}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id={`${formId}-type`} className="w-full">
                   <SelectValue placeholder={t("Select type")} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="WET">{t('Wet')}</SelectItem>
                   <SelectItem value="DIRTY">{t('Dirty')}</SelectItem>
                   <SelectItem value="BOTH">{t('Wet and Dirty')}</SelectItem>
+                  <SelectItem value="DRY">{t('Dry')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -314,10 +324,10 @@ export default function DiaperForm({
               </>
             )}
 
-            {formData.type && formData.type !== 'WET' && (
+            {formData.type && isDirtyDiaper(formData.type) && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="form-label">{t('Condition')}</label>
+                  <label htmlFor={`${formId}-condition`} className="form-label">{t('Condition')}</label>
                   <Select
                     value={formData.condition}
                     onValueChange={(value: string) =>
@@ -325,7 +335,7 @@ export default function DiaperForm({
                     }
                     disabled={loading}
                   >
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger id={`${formId}-condition`} className="w-full">
                       <SelectValue placeholder={t("Select condition")} />
                     </SelectTrigger>
                     <SelectContent>
@@ -337,7 +347,7 @@ export default function DiaperForm({
                   </Select>
                 </div>
                 <div>
-                  <label className="form-label">{t('Color')}</label>
+                  <label htmlFor={`${formId}-color`} className="form-label">{t('Color')}</label>
                   <Select
                     value={formData.color}
                     onValueChange={(value: string) =>
@@ -345,7 +355,7 @@ export default function DiaperForm({
                     }
                     disabled={loading}
                   >
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger id={`${formId}-color`} className="w-full">
                       <SelectValue placeholder={t("Select color")} />
                     </SelectTrigger>
                     <SelectContent>
@@ -360,6 +370,20 @@ export default function DiaperForm({
                 </div>
               </div>
             )}
+
+            {/* Notes */}
+            <div>
+              <label htmlFor={`${formId}-notes`} className="form-label">{t('Notes')}</label>
+              <Textarea
+                id={`${formId}-notes`}
+                name="notes"
+                placeholder={t("Enter any notes about the diaper change")}
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                rows={3}
+                disabled={loading}
+              />
+            </div>
           </div>
           </form>
         </FormPageContent>

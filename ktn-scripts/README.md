@@ -7,7 +7,7 @@ runnable from anywhere in the repo (they `cd` into the repo root themselves).
 
 | Script                | What it does                                                                |
 | --------------------- | --------------------------------------------------------------------------- |
-| `sync-upstream.sh`    | Rebase `main` on `upstream/main`, force-push, deploy fires automatically.   |
+| `sync-upstream.sh`    | Merge ONE upstream release tag onto a sync branch, then stop. Never pushes. |
 | `deploy.sh`           | Manually re-run the deploy workflow without pushing a new commit.           |
 | `logs.sh`             | Tail live container logs on ktn.                                            |
 | `restart.sh`          | Restart the prod container in place (no rebuild). For env changes.          |

@@ -3,11 +3,15 @@ import prisma from '../../../../../db';
 import { withApiKeyAuth, ApiKeyContext, validateBabyAccess } from '../../../auth';
 import { checkRateLimit } from '../../../rate-limiter';
 import { hookSuccess, hookError } from '../../../response';
+import { BATH_TYPES, DIAPER_COLORS, DIAPER_CONDITIONS, SLEEP_QUALITIES } from '../../../field-values';
+import { DEFAULT_SLEEP_LOCATIONS } from '@/src/constants/sleepLocations';
+import { applyLocationOrder } from '@/src/utils/sleepLocationUtils';
 
-const VALID_TYPES = ['medicines', 'supplements', 'sleep-locations', 'play-categories', 'feed-types'] as const;
+const VALID_TYPES = [
+  'medicines', 'supplements', 'sleep-locations', 'play-categories', 'feed-types',
+  'diaper-conditions', 'diaper-colors', 'sleep-qualities', 'bath-types', 'units',
+] as const;
 type RefType = typeof VALID_TYPES[number];
-
-const DEFAULT_SLEEP_LOCATIONS = ['Bassinet', 'Stroller', 'Crib', 'Car Seat', 'Parents Room', 'Contact', 'Other'];
 
 const FEED_TYPES = [
   { value: 'BREAST', description: 'Breastfeeding' },
@@ -28,7 +32,20 @@ async function getMedicines(familyId: string, isSupplement: boolean = false) {
   return medicines;
 }
 
-async function getSleepLocations(babyId: string) {
+// Dedup key that ignores case and underscore/space differences, so a legacy
+// enum token like "CAR_SEAT" collapses onto its display string "Car Seat".
+function sleepLocationDedupKey(loc: string): string {
+  return loc.toLowerCase().replace(/[\s_]+/g, '');
+}
+
+// A "display-cased" value is the kind the app shows in the UI: mixed case,
+// no underscores — preferred over an ALL_CAPS/underscore legacy token when
+// both collapse to the same dedup key.
+function isDisplayCased(loc: string): boolean {
+  return !loc.includes('_') && /[a-z]/.test(loc);
+}
+
+async function getSleepLocations(babyId: string, familyId: string) {
   const customLocations = await prisma.sleepLog.findMany({
     where: { babyId, deletedAt: null, location: { not: null } },
     select: { location: true },
@@ -38,10 +55,44 @@ async function getSleepLocations(babyId: string) {
   const combined = [...DEFAULT_SLEEP_LOCATIONS, ...custom];
   const seen = new Map<string, string>();
   for (const loc of combined) {
-    const key = loc.toLowerCase();
-    if (!seen.has(key)) seen.set(key, loc);
+    const key = sleepLocationDedupKey(loc);
+    const existing = seen.get(key);
+    if (!existing || (!isDisplayCased(existing) && isDisplayCased(loc))) {
+      seen.set(key, loc);
+    }
   }
-  return Array.from(seen.values());
+
+  // Order after dedup, so a saved order naming a collapsed legacy token
+  // (e.g. "CAR_SEAT") can't resurrect it alongside its display form.
+  const names = Array.from(seen.values());
+  const settings = await prisma.settings.findFirst({
+    where: { familyId },
+    orderBy: { updatedAt: 'desc' },
+  });
+  let locationOrder: string[] = [];
+  const raw = (settings as unknown as { sleepLocationSettings?: string } | null)?.sleepLocationSettings;
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as { locationOrder?: unknown };
+      if (Array.isArray(parsed.locationOrder)) {
+        locationOrder = parsed.locationOrder.filter((n): n is string => typeof n === 'string');
+      }
+    } catch {
+      // ignore malformed settings
+    }
+  }
+
+  return applyLocationOrder(
+    names.map((name) => ({ name, count: 0, isDefault: false, hidden: false })),
+    locationOrder,
+  ).map((s) => s.name);
+}
+
+async function getUnits() {
+  return prisma.unit.findMany({
+    select: { unitAbbr: true, unitName: true },
+    orderBy: { unitAbbr: 'asc' },
+  });
 }
 
 async function getPlayCategories(babyId: string, playType?: string) {
@@ -82,13 +133,28 @@ async function handleGet(req: NextRequest, ctx: ApiKeyContext, routeContext: any
     data.supplements = await getMedicines(ctx.familyId, true);
   }
   if (!typeParam || typeParam === 'sleep-locations') {
-    data.sleepLocations = await getSleepLocations(babyId);
+    data.sleepLocations = await getSleepLocations(babyId, ctx.familyId);
   }
   if (!typeParam || typeParam === 'play-categories') {
     data.playCategories = await getPlayCategories(babyId, playType);
   }
   if (!typeParam || typeParam === 'feed-types') {
     data.feedTypes = FEED_TYPES;
+  }
+  if (!typeParam || typeParam === 'diaper-conditions') {
+    data.diaperConditions = DIAPER_CONDITIONS;
+  }
+  if (!typeParam || typeParam === 'diaper-colors') {
+    data.diaperColors = DIAPER_COLORS;
+  }
+  if (!typeParam || typeParam === 'sleep-qualities') {
+    data.sleepQualities = SLEEP_QUALITIES;
+  }
+  if (!typeParam || typeParam === 'bath-types') {
+    data.bathTypes = BATH_TYPES;
+  }
+  if (!typeParam || typeParam === 'units') {
+    data.units = await getUnits();
   }
 
   return hookSuccess(data, { familyId: ctx.familyId, babyId }, rl.headers);

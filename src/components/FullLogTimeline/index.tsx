@@ -13,6 +13,7 @@ import MeasurementForm from '@/src/components/forms/MeasurementForm';
 import GiveMedicineForm from '@/src/components/forms/GiveMedicineForm';
 import ActivityForm from '@/src/components/forms/ActivityForm';
 import VaccineForm from '@/src/components/forms/VaccineForm';
+import FoodForm from '@/src/components/forms/FoodForm';
 import { ActivityType, FilterType, FullLogTimelineProps } from './full-log-timeline.types';
 import FullLogFilter from './FullLogFilter';
 import FullLogSearchBar from './FullLogSearchBar';
@@ -20,9 +21,10 @@ import FullLogActivityList from './FullLogActivityList';
 import FullLogActivityDetails from './FullLogActivityDetails';
 import FullLogExportButton from './FullLogExportButton';
 import { getActivityEndpoint, getActivityTime } from '@/src/components/Timeline/utils';
-import { PumpLogResponse, MedicineLogResponse, BreastMilkAdjustmentResponse, PlayLogResponse, VaccineLogResponse } from '@/app/api/types';
+import { PumpLogResponse, MedicineLogResponse, BreastMilkAdjustmentResponse, PlayLogResponse, VaccineLogResponse, FoodLogResponse } from '@/app/api/types';
 import { cn } from '@/src/lib/utils';
 import styles from './full-log-timeline.styles';
+import { useLocalization } from '@/src/context/localization';
 import './full-log-timeline.css';
 
 /**
@@ -39,10 +41,11 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
   onDateRangeChange,
   babyId,
 }) => {
+  const { t } = useLocalization();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<ActivityType | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterType>(null);
-  const [editModalType, setEditModalType] = useState<'sleep' | 'feed' | 'diaper' | 'potty' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'medicine' | 'play' | 'vaccine' | null>(null);
+  const [editModalType, setEditModalType] = useState<'sleep' | 'feed' | 'diaper' | 'potty' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'medicine' | 'play' | 'vaccine' | 'food' | null>(null);
   const [itemsPerPage, setItemsPerPage] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -92,6 +95,7 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
       type?: string; 
       location?: string; 
       quality?: string;
+      notes?: string;
     } => {
       return 'duration' in act;
     };
@@ -105,7 +109,8 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
       notes?: string;
       bottleType?: string;
     } => {
-      return 'amount' in act;
+      // Food logs (issue #203) also carry an amount but are searched separately
+      return 'amount' in act && !('foodId' in act);
     };
     
     const isPottyActivity = (act: any): act is {
@@ -120,6 +125,7 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
       condition: string; 
       type?: string; 
       color?: string;
+      notes?: string;
     } => {
       return 'condition' in act;
     };
@@ -180,6 +186,7 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
       if (activity.type && activity.type.toLowerCase().includes(searchLower)) return true;
       if (activity.location && activity.location.toLowerCase().includes(searchLower)) return true;
       if (activity.quality && activity.quality.toLowerCase().includes(searchLower)) return true;
+      if (activity.notes && activity.notes.toLowerCase().includes(searchLower)) return true;
       return false;
     }
     
@@ -190,7 +197,7 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
       if (activity.side && activity.side.toLowerCase().includes(searchLower)) return true;
       if (activity.food && activity.food.toLowerCase().includes(searchLower)) return true;
       if (activity.notes && activity.notes.toLowerCase().includes(searchLower)) return true;
-      if (activity.bottleType && activity.bottleType.toLowerCase().includes(searchLower)) return true;
+      if (activity.bottleType && (activity.bottleType.toLowerCase().includes(searchLower) || t(activity.bottleType).toLowerCase().includes(searchLower))) return true;
       return false;
     }
     
@@ -205,6 +212,7 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
       if (activity.type && activity.type.toLowerCase().includes(searchLower)) return true;
       if (activity.condition && activity.condition.toLowerCase().includes(searchLower)) return true;
       if (activity.color && activity.color.toLowerCase().includes(searchLower)) return true;
+      if (activity.notes && activity.notes.toLowerCase().includes(searchLower)) return true;
       return false;
     }
     
@@ -252,6 +260,15 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
       return false;
     }
 
+    // Food log search (issue #203) - foodId is unique to food logs
+    if ('foodId' in activity) {
+      const act = activity as any;
+      if (act.food?.name && act.food.name.toLowerCase().includes(searchLower)) return true;
+      if (act.notes && act.notes.toLowerCase().includes(searchLower)) return true;
+      if (act.reactionDescription && act.reactionDescription.toLowerCase().includes(searchLower)) return true;
+      return false;
+    }
+
     // Vaccine activity search
     if ('vaccineName' in activity) {
       const act = activity as any;
@@ -271,7 +288,7 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
     }
 
     return false;
-  }, []);
+  }, [t]);
 
   const breastMilkTrackingEnabled = (settings as any)?.enableBreastMilkTracking ?? true;
 
@@ -290,7 +307,7 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
             case 'sleep':
               return 'duration' in activity;
             case 'feed':
-              return 'amount' in activity;
+              return 'amount' in activity && !('foodId' in activity);
             case 'potty':
               return 'pottyLocation' in activity;
             case 'diaper':
@@ -313,6 +330,9 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
               return 'activities' in activity && 'type' in activity && ['TUMMY_TIME', 'INDOOR_PLAY', 'OUTDOOR_PLAY', 'WALK', 'CUSTOM'].includes((activity as any).type);
             case 'vaccine':
               return 'vaccineName' in activity;
+            case 'food':
+              // Food logs (issue #203) - foodId is unique to food logs
+              return 'foodId' in activity;
             default:
               return true;
           }
@@ -348,7 +368,7 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
             case 'sleep':
               return 'duration' in activity;
             case 'feed':
-              return 'amount' in activity;
+              return 'amount' in activity && !('foodId' in activity);
             case 'potty':
               return 'pottyLocation' in activity;
             case 'diaper':
@@ -369,6 +389,9 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
               return 'doseAmount' in activity && 'medicineId' in activity;
             case 'vaccine':
               return 'vaccineName' in activity;
+            case 'food':
+              // Food logs (issue #203) - foodId is unique to food logs
+              return 'foodId' in activity;
             default:
               return true;
           }
@@ -407,7 +430,7 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
   };
 
   // Handle activity editing
-  const handleEdit = (activity: ActivityType, type: 'sleep' | 'feed' | 'diaper' | 'potty' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'medicine' | 'play' | 'vaccine') => {
+  const handleEdit = (activity: ActivityType, type: 'sleep' | 'feed' | 'diaper' | 'potty' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'medicine' | 'play' | 'vaccine' | 'food') => {
     setSelectedActivity(activity);
     setEditModalType(type);
   };
@@ -669,6 +692,21 @@ const FullLogTimeline: React.FC<FullLogTimelineProps> = ({
             babyId={selectedActivity.babyId}
             initialTime={'time' in selectedActivity && selectedActivity.time ? String(selectedActivity.time) : getActivityTime(selectedActivity)}
             activity={'vaccineName' in selectedActivity ? (selectedActivity as unknown as VaccineLogResponse) : undefined}
+            onSuccess={() => {
+              setEditModalType(null);
+              setSelectedActivity(null);
+              onActivityDeleted?.();
+            }}
+          />
+          <FoodForm
+            isOpen={editModalType === 'food'}
+            onClose={() => {
+              setEditModalType(null);
+              setSelectedActivity(null);
+            }}
+            babyId={selectedActivity.babyId}
+            initialTime={'time' in selectedActivity && selectedActivity.time ? String(selectedActivity.time) : getActivityTime(selectedActivity)}
+            activity={'foodId' in selectedActivity ? (selectedActivity as unknown as FoodLogResponse) : undefined}
             onSuccess={() => {
               setEditModalType(null);
               setSelectedActivity(null);

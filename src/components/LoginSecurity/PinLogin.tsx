@@ -521,11 +521,12 @@ export default function PinLogin({
                 className="absolute right-2 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0"
                 onClick={() => setShowAdminPassword(!showAdminPassword)}
                 disabled={!!lockoutTime}
+                aria-label={showAdminPassword ? t('Hide password') : t('Show password')}
               >
                 {showAdminPassword ? (
-                  <EyeOff className="h-4 w-4" />
+                  <EyeOff className="h-4 w-4" aria-hidden="true" />
                 ) : (
-                  <Eye className="h-4 w-4" />
+                  <Eye className="h-4 w-4" aria-hidden="true" />
                 )}
               </Button>
             </div>
@@ -557,6 +558,8 @@ export default function PinLogin({
                   <div
                     className="flex gap-2 cursor-pointer"
                     onClick={handleFocusPin}
+                    role="img"
+                    aria-label={`${t('Digits entered')}: ${pin.length}`}
                   >
                     {pin.length === 0 ? (
                       // Show 4 placeholder dots when no input
@@ -581,6 +584,7 @@ export default function PinLogin({
                 {/* Hidden inputs */}
                 <Input
                   ref={loginIdInputRef}
+                  aria-label={t('Login ID')}
                   value={loginId}
                   onChange={handleLoginIdChange}
                   className="text-center text-xl sr-only"
@@ -594,6 +598,7 @@ export default function PinLogin({
                 />
                 <Input
                   ref={pinInputRef}
+                  aria-label={t('Security PIN')}
                   type="password"
                   value={pin}
                   onChange={handlePinChange}
@@ -616,6 +621,8 @@ export default function PinLogin({
                 <div
                   className="flex gap-2 justify-center my-2 cursor-pointer"
                   onClick={handleFocusPin}
+                  role="img"
+                  aria-label={`${t('Digits entered')}: ${pin.length}`}
                 >
                   {pin.length === 0 ? (
                     // Show 4 placeholder dots when no input
@@ -637,6 +644,7 @@ export default function PinLogin({
                 </div>
                 <Input
                   ref={pinInputRef}
+                  aria-label={t('Security PIN')}
                   type="password"
                   value={pin}
                   onChange={handlePinChange}
@@ -656,7 +664,7 @@ export default function PinLogin({
       </div>
 
       {error && (
-        <p className="text-red-500 text-sm login-error text-center">
+        <p role="alert" className="text-red-500 text-sm login-error text-center">
           {error}
           {lockoutTime && ` (${formatTimeRemaining(lockoutTime)})`}
         </p>
@@ -688,10 +696,11 @@ export default function PinLogin({
           <Button
             variant="outline"
             className="w-14 h-14 text-xl font-semibold rounded-xl hover:bg-red-50 disabled:opacity-50 security-delete-button"
+            aria-label={t('Delete')}
             onClick={handleDelete}
             disabled={!!lockoutTime}
           >
-            <X className="h-6 w-6" />
+            <X className="h-6 w-6" aria-hidden="true" />
           </Button>
           {/* Go Button integrated into keypad */}
           <Button

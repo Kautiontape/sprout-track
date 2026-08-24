@@ -11,6 +11,7 @@ import SecuritySetupStage from './SecuritySetupStage';
 import BabySetupStage from './BabySetupStage';
 import { Gender } from '@prisma/client';
 import { useLocalization } from '@/src/context/localization';
+import { FEED_TIMER_CATEGORIES, FeedTimerCategory } from '@/src/utils/feedTimerConfig';
 
 import './setup-wizard.css';
 
@@ -42,23 +43,20 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, token, initialSet
     familyData ? { id: familyData.id, name: familyData.name, slug: familyData.slug } : null
   );
 
-  // Stage 2: Security setup — pre-fill from familyData when resuming
+  // Stage 2: Security setup. PINs are never sent back from the server, so on resume the
+  // PIN fields start blank and must be re-entered (they can't be pre-filled).
   const [useSystemPin, setUseSystemPin] = useState(
     familyData ? (familyData.authType !== 'CARETAKER') : true
   );
-  const [systemPin, setSystemPin] = useState(
-    familyData?.securityPin && familyData.authType !== 'CARETAKER' ? familyData.securityPin : ''
-  );
-  const [confirmSystemPin, setConfirmSystemPin] = useState(
-    familyData?.securityPin && familyData.authType !== 'CARETAKER' ? familyData.securityPin : ''
-  );
+  const [systemPin, setSystemPin] = useState('');
+  const [confirmSystemPin, setConfirmSystemPin] = useState('');
   const [caretakers, setCaretakers] = useState<Array<{
     loginId: string;
     name: string;
     type: string;
     role: 'ADMIN' | 'USER';
     securityPin: string;
-  }>>(familyData?.caretakers || []);
+  }>>((familyData?.caretakers || []).map(c => ({ ...c, securityPin: '' })));
   const [newCaretaker, setNewCaretaker] = useState({
     loginId: '',
     name: '',
@@ -74,6 +72,8 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, token, initialSet
   const [babyGender, setBabyGender] = useState<Gender | ''>('');
   const [feedWarningTime, setFeedWarningTime] = useState('02:00');
   const [diaperWarningTime, setDiaperWarningTime] = useState('03:00');
+  const [feedTimerFrom, setFeedTimerFrom] = useState('start');
+  const [feedTimerTypes, setFeedTimerTypes] = useState<FeedTimerCategory[]>([...FEED_TIMER_CATEGORIES]);
   
   // Error handling
   const [error, setError] = useState('');
@@ -316,6 +316,11 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, token, initialSet
             gender: babyGender,
             feedWarningTime,
             diaperWarningTime,
+            feedTimerFrom,
+            // null = all feeds count (default)
+            feedTimerTypes: feedTimerTypes.length === FEED_TIMER_CATEGORIES.length
+              ? null
+              : JSON.stringify(feedTimerTypes),
             familyId: createdFamily?.id,
           }),
         });
@@ -344,21 +349,27 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, token, initialSet
                 }
               }
             } else if (caretakers.length > 0) {
-              // Link account to first caretaker — need to find its ID
-              const caretakerListResponse = await fetch(`/api/family/${createdFamily?.id}/caretakers`, {
+              // Link account to the lowest-loginId caretaker — need to find its ID.
+              // /api/family/{id}/caretakers is sysadmin-gated and 403s for account JWTs, so use
+              // the account-accessible listing instead. That endpoint orders by name, so pick
+              // the lowest loginId rather than trusting list order.
+              const caretakerListResponse = await fetch(`/api/caretaker?familyId=${createdFamily?.id}`, {
                 headers: getAuthHeaders(),
               });
 
               if (caretakerListResponse.ok) {
                 const caretakerListData = await caretakerListResponse.json();
                 if (caretakerListData.success && caretakerListData.data?.length > 0) {
-                  // Find the first non-system caretaker
-                  const firstCaretaker = caretakerListData.data.find((c: { loginId: string }) => c.loginId !== '00');
-                  if (firstCaretaker) {
+                  // Find the non-system caretaker with the lowest loginId
+                  const lowestCaretaker = caretakerListData.data
+                    .filter((c: { loginId: string }) => c.loginId !== '00')
+                    .reduce((min: { loginId: string } | undefined, c: { loginId: string }) =>
+                      (!min || c.loginId < min.loginId) ? c : min, undefined);
+                  if (lowestCaretaker) {
                     await fetch('/api/accounts/link-caretaker', {
                       method: 'POST',
                       headers: getAuthHeaders(),
-                      body: JSON.stringify({ caretakerId: firstCaretaker.id }),
+                      body: JSON.stringify({ caretakerId: lowestCaretaker.id }),
                     });
                   }
                 }
@@ -495,11 +506,11 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, token, initialSet
                   : "/SetupBaby-1024.png"
             }
             alt={
-              stage === 1 
-                ? "Family Setup" 
-                : stage === 2 
-                  ? "Security Setup" 
-                  : "Baby Setup"
+              stage === 1
+                ? t('Family Setup')
+                : stage === 2
+                  ? t('Security Setup')
+                  : t('Baby Setup')
             }
             width={128}
             height={128}
@@ -511,13 +522,13 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, token, initialSet
               {t('Completing setup for')} <strong>{familyData.name}</strong>
             </p>
           )}
-          <div className={cn(styles.progressBar, "setup-wizard-progress-bar")}>
+          <div className={cn(styles.progressBar, "setup-wizard-progress-bar")} aria-hidden="true">
             <div 
               className={cn(styles.progressIndicator, "setup-wizard-progress-indicator")}
               style={{ width: `${(stage / 3) * 100}%` }}
             ></div>
           </div>
-          <p className={cn(styles.stepIndicator, "setup-wizard-step-indicator")}>
+          <p className={cn(styles.stepIndicator, "setup-wizard-step-indicator")} aria-live="polite">
             {t('Step')} {stage} {t('of 3')}
           </p>
         </div>
@@ -567,6 +578,10 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, token, initialSet
             setFeedWarningTime={setFeedWarningTime}
             diaperWarningTime={diaperWarningTime}
             setDiaperWarningTime={setDiaperWarningTime}
+            feedTimerFrom={feedTimerFrom}
+            setFeedTimerFrom={setFeedTimerFrom}
+            feedTimerTypes={feedTimerTypes}
+            setFeedTimerTypes={setFeedTimerTypes}
           />
         )}
 

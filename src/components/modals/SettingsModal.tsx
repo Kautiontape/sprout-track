@@ -236,7 +236,7 @@ export default function SettingsModal({
                   className="w-full"
                   disabled={loading}
                 >
-                  <Download className="h-4 w-4 mr-2" />
+                  <Download className="h-4 w-4 mr-2" aria-hidden="true" />
                   {t('Backup Database')}
                 </Button>
                 <Button
@@ -245,7 +245,7 @@ export default function SettingsModal({
                   className="w-full"
                   disabled={loading || isRestoring}
                 >
-                  <Upload className="h-4 w-4 mr-2" />
+                  <Upload className="h-4 w-4 mr-2" aria-hidden="true" />
                   {t('Restore Database')}
                 </Button>
               </div>
@@ -285,7 +285,7 @@ export default function SettingsModal({
                       setShowBabyModal(true);
                     }}
                   >
-                    <Edit className="h-4 w-3 mr-2" />
+                    <Edit className="h-4 w-3 mr-2" aria-hidden="true" />
                     {t('Edit')}
                   </Button>
                   <Button variant="outline" onClick={() => {
@@ -293,7 +293,7 @@ export default function SettingsModal({
                     setSelectedBaby(null);
                     setShowBabyModal(true);
                   }}>
-                    <Plus className="h-4 w-3 mr-2" />
+                    <Plus className="h-4 w-3 mr-2" aria-hidden="true" />
                     {t('Add')}
                   </Button>
                 </div>
@@ -313,7 +313,6 @@ export default function SettingsModal({
       <ChangePinModal
         open={showChangePinModal}
         onClose={() => setShowChangePinModal(false)}
-        currentPin={settings?.securityPin || '111222'}
         onPinChange={(newPin) => handleSettingsChange({ securityPin: newPin })}
       />
     </>

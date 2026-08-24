@@ -31,6 +31,35 @@
 **Untouched by this plan:**
 - `src/components/NurseryMode/` — our nursery implementation. No edits at any rung.
 
+## Scratch database canaries
+
+`db/sync-test.db` is a **read-only snapshot of the live ktn production database**,
+pulled 2026-08-24 and current through that afternoon. The repo's own
+`db/baby-tracker.db` is a stale June dev copy and is NOT what the dry runs use.
+
+Baseline, measured before the ladder started:
+
+| Measure | Value | Why it matters |
+| --- | ---: | --- |
+| `PottyLog` rows | **24** | The invariant canary. No upstream migration may change this. |
+| `FeedLog` rows | **701** | Total must survive both row-rewriting migrations. |
+| `FeedLog` with `type='SOLIDS'` | **0** | Upstream's 1.6.0 solid-to-food conversion is a **no-op** for this family. |
+| `FeedLog` with `bottleType='Formula\Breast'` | **156** | Upstream's 1.6.2 migration **does** rewrite these. Real canary. |
+
+Two consequences worth knowing:
+
+- The scariest-sounding migration (1.6.0, solid feeds to food logs) touches nothing
+  here, because this family never logged a solid feed. The dry run proves the
+  migration executes cleanly against our merged schema, not that it converts
+  correctly — there is nothing to convert.
+- The 1.6.2 bottle-type migration is the one that actually rewrites production
+  rows: 156 of them. That is the migration to watch.
+
+The datasource URL is a literal in `schema.prisma` — Prisma requires it, see
+`scripts/prisma-provider.js` — so `DATABASE_URL` is ignored. Every dry run
+regenerates a scratch schema pointing at `db/sync-test.db`. `prisma/sync-test.prisma`
+is gitignored so it cannot pollute a merge.
+
 ---
 
 ### Task 1: Setup — remote, backups, branch
@@ -70,13 +99,13 @@ If any SHA differs, STOP — upstream has moved or retagged since this plan was 
 
 - [ ] **Step 3: Back up the real database**
 
-The database at `/db/baby-tracker.db` is real family data, not test data.
+The database at `db/baby-tracker.db` is real family data, not test data.
 
 ```bash
 STAMP=$(date +%Y%m%d-%H%M%S)
-cp /db/baby-tracker.db "/db/baby-tracker.db.pre-upstream-${STAMP}.bak"
-cp /db/baby-tracker-logs.db "/db/baby-tracker-logs.db.pre-upstream-${STAMP}.bak"
-ls -la /db/*.bak | tail -4
+cp db/baby-tracker.db "db/baby-tracker.db.pre-upstream-${STAMP}.bak"
+cp db/baby-tracker-logs.db "db/baby-tracker-logs.db.pre-upstream-${STAMP}.bak"
+ls -la db/*.bak | tail -4
 ```
 
 Expected: two new `.bak` files with today's date, each roughly the size of its source (~1.6M and ~29K).
@@ -84,11 +113,11 @@ Expected: two new `.bak` files with today's date, each roughly the size of its s
 - [ ] **Step 4: Create the scratch database for migration dry-runs**
 
 ```bash
-cp /db/baby-tracker.db /db/sync-test.db
-ls -la /db/sync-test.db
+cp db/baby-tracker.db db/sync-test.db
+ls -la db/sync-test.db
 ```
 
-Expected: `/db/sync-test.db` exists at ~1.6M. This copy — never the real database — receives every `prisma migrate deploy` in this plan until cutover.
+Expected: `db/sync-test.db` exists at ~1.6M. This copy — never the real database — receives every `prisma migrate deploy` in this plan until cutover.
 
 - [ ] **Step 5: Create the sync branch**
 
@@ -418,7 +447,8 @@ Expected: no `tsc` output; build ends with `✓ Compiled successfully`.
 - [ ] **Step 8: Dry-run the migrations against the scratch database**
 
 ```bash
-DATABASE_URL="file:/db/sync-test.db" npx prisma migrate deploy
+sed 's|url      = "file:../db/baby-tracker.db"|url      = "file:../db/sync-test.db"|' prisma/schema.prisma > prisma/sync-test.prisma
+npx prisma migrate deploy --schema=prisma/sync-test.prisma
 ```
 
 Expected: Prisma reports applying upstream's pending migrations (`20260711000000_add_feed_session_id`, `20260711000001_add_feed_timer_from`, `20260711000002_add_bath_type`) and ends with `All migrations have been successfully applied.` Our already-applied migrations are left alone despite sorting later by date.
@@ -557,7 +587,8 @@ Expected: no `tsc` output; `✓ Compiled successfully`; all tests pass including
 - [ ] **Step 7: Dry-run the migrations**
 
 ```bash
-DATABASE_URL="file:/db/sync-test.db" npx prisma migrate deploy
+sed 's|url      = "file:../db/baby-tracker.db"|url      = "file:../db/sync-test.db"|' prisma/schema.prisma > prisma/sync-test.prisma
+npx prisma migrate deploy --schema=prisma/sync-test.prisma
 ```
 
 Expected: `All migrations have been successfully applied.`
@@ -643,21 +674,29 @@ npm run test
 - [ ] **Step 7: Record the pre-migration row counts on the scratch database**
 
 ```bash
-sqlite3 /db/sync-test.db "SELECT COUNT(*) AS solid_feeds FROM FeedLog WHERE type = 'SOLIDS';"
-sqlite3 /db/sync-test.db "SELECT COUNT(*) AS potty_logs FROM PottyLog;"
+sqlite3 db/sync-test.db "SELECT COUNT(*) AS solid_feeds FROM FeedLog WHERE type = 'SOLIDS';"
+sqlite3 db/sync-test.db "SELECT COUNT(*) AS potty_logs FROM PottyLog;"
 ```
 
-Write both numbers down. The potty count must not change; the solid-feed count is what upstream's migration converts.
+Expected: `solid_feeds` is **0** and `potty_logs` is **24**. This family never logged a solid feed, so upstream's conversion has nothing to convert — the dry run here proves the migration *executes* against our merged schema, not that it converts correctly.
 
 - [ ] **Step 8: Run the migration and verify the conversion**
 
 ```bash
-DATABASE_URL="file:/db/sync-test.db" npx prisma migrate deploy
-sqlite3 /db/sync-test.db "SELECT COUNT(*) FROM FoodLog;"
-sqlite3 /db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
+sed 's|url      = "file:../db/baby-tracker.db"|url      = "file:../db/sync-test.db"|' prisma/schema.prisma > prisma/sync-test.prisma
+npx prisma migrate deploy --schema=prisma/sync-test.prisma
+sqlite3 db/sync-test.db "SELECT COUNT(*) FROM FoodLog;"
+sqlite3 db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
 ```
 
-Expected: `All migrations have been successfully applied.` The `FoodLog` count reflects the converted solid feeds from Step 7. **The `PottyLog` count is unchanged from Step 7** — if it moved, stop and investigate before going further.
+Expected: `All migrations have been successfully applied.` `FoodLog` is **0** (nothing to convert). **`PottyLog` is still 24 and `FeedLog` is still 701** — if either moved, stop and investigate before going further.
+
+```bash
+sqlite3 db/sync-test.db "SELECT COUNT(*) FROM FeedLog;"
+sqlite3 db/sync-test.db "SELECT type, COUNT(*) FROM PottyLog GROUP BY type;"
+```
+
+Expected: 701 feeds; potty breakdown `DIRTY|1` and `WET|23`.
 
 - [ ] **Step 9: Smoke-test**
 
@@ -748,16 +787,79 @@ npm run build
 npm run test
 ```
 
+- [ ] **Step 7b: Point our bottle-type normalizer at upstream's canonical value**
+
+**Do this before the migration dry-run, or the dry run will look fine and production will silently drift.**
+
+Upstream's `20260720120000_fix_mixed_bottle_type_slash` migration rewrites the mixed-bottle value from `Formula\Breast` (backslash) to `Formula/Breast` (forward slash), so it matches its translation key. In this database that is **156 of 701 feed rows**.
+
+Our fork has a `normalizeBottleType` helper upstream does not have. It runs on every write path — `app/api/feed-log/route.ts` (create and update) and the hooks API — and it currently coerces the *correct* value back to the broken one:
+
+```typescript
+'formula\\breast': 'Formula\\Breast',
+'formula/breast': 'Formula\\Breast',
+```
+
+Left alone, the migration fixes history while every new mixed bottle is written back as `Formula\Breast`. That is not cosmetic: upstream 1.6.2 filters on the string in `app/api/breast-milk-balance/route.ts` (`bottleType: { in: ['Breast Milk', 'Formula/Breast'] }`) and branches on it in four places in `src/components/Timeline/utils.tsx`. New mixed bottles would drop out of the breast-milk inventory silently.
+
+This is mechanical conformance to upstream's data contract, the same category as the webhook validator in Task 9. Our decision to normalize on write stands; only the canonical target changes.
+
+In `app/api/utils/bottleType.ts`, change both mixed-bottle entries to the forward-slash value:
+
+```typescript
+  'formula\\breast': 'Formula/Breast',
+  'formula/breast': 'Formula/Breast',
+```
+
+Add a test at `tests/bottleType.test.ts` (the project's tests live in the top-level `tests/` folder):
+
+```typescript
+import { test } from 'vitest';
+import assert from 'node:assert/strict';
+import { normalizeBottleType } from '@/app/api/utils/bottleType';
+
+test('mixed bottles normalize to upstream canonical forward-slash form', () => {
+  assert.equal(normalizeBottleType('Formula\\Breast'), 'Formula/Breast');
+  assert.equal(normalizeBottleType('formula/breast'), 'Formula/Breast');
+  assert.equal(normalizeBottleType('FORMULA/BREAST'), 'Formula/Breast');
+});
+
+test('other bottle types keep their canonical casing', () => {
+  assert.equal(normalizeBottleType('formula'), 'Formula');
+  assert.equal(normalizeBottleType('breast milk'), 'Breast Milk');
+  assert.equal(normalizeBottleType('  '), null);
+  assert.equal(normalizeBottleType(null), null);
+  assert.equal(normalizeBottleType('Homemade'), 'Homemade');
+});
+```
+
+Run it:
+
+```bash
+npm run test
+```
+
+Expected: PASS, including the two new tests.
+
 - [ ] **Step 8: Dry-run the migrations and verify potty rows are untouched**
 
 ```bash
-sqlite3 /db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
-DATABASE_URL="file:/db/sync-test.db" npx prisma migrate deploy
-sqlite3 /db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
-sqlite3 /db/sync-test.db "SELECT DISTINCT bottleType FROM FeedLog WHERE bottleType IS NOT NULL;"
+sqlite3 db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
+sed 's|url      = "file:../db/baby-tracker.db"|url      = "file:../db/sync-test.db"|' prisma/schema.prisma > prisma/sync-test.prisma
+npx prisma migrate deploy --schema=prisma/sync-test.prisma
+sqlite3 db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
+sqlite3 db/sync-test.db "SELECT DISTINCT bottleType FROM FeedLog WHERE bottleType IS NOT NULL;"
 ```
 
-Expected: `All migrations have been successfully applied.` The `PottyLog` count is identical before and after. The distinct bottle types show upstream's post-migration canonical values with no slash-separated leftovers.
+Expected: `All migrations have been successfully applied.` `PottyLog` is **24** both before and after, and `FeedLog` is still **701**.
+
+This is the migration that actually rewrites production rows — 156 of them. Verify the rewrite happened and lost nothing:
+
+```bash
+sqlite3 db/sync-test.db "SELECT COALESCE(bottleType,'(null)'), COUNT(*) FROM FeedLog GROUP BY bottleType;"
+```
+
+Expected: **no `Formula\Breast` rows remain**, those 156 have moved to upstream's canonical mixed value, and the group counts still total 701.
 
 - [ ] **Step 9: Commit the merge**
 
@@ -1014,12 +1116,13 @@ npm run test
 - [ ] **Step 8: Dry-run the migrations**
 
 ```bash
-sqlite3 /db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
-DATABASE_URL="file:/db/sync-test.db" npx prisma migrate deploy
-sqlite3 /db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
+sqlite3 db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
+sed 's|url      = "file:../db/baby-tracker.db"|url      = "file:../db/sync-test.db"|' prisma/schema.prisma > prisma/sync-test.prisma
+npx prisma migrate deploy --schema=prisma/sync-test.prisma
+sqlite3 db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
 ```
 
-Expected: `All migrations have been successfully applied.` and an unchanged potty count.
+Expected: `All migrations have been successfully applied.` and a potty count of **24** both before and after.
 
 - [ ] **Step 9: Smoke-test**
 
@@ -1232,6 +1335,36 @@ Expected: no `tsc` output; `✓ Compiled successfully`; all tests pass; the tran
 
 `npm run lint` is known-broken in this fork and is not a gate.
 
+- [ ] **Step 2b: Assert zero schema drift — the check the rung dry-runs were missing**
+
+Row counts are not sufficient evidence that a migration was harmless. Upstream's
+`20260719232539_add_who_growth_chart_data` rebuilds the whole `Settings` table
+(SQLite cannot `ALTER COLUMN`, so Prisma does `CREATE new_Settings` / `INSERT SELECT`
+/ `DROP` / `RENAME`) using upstream's column list, which silently drops this fork's
+`pottyLocationSettings`, `hueConfig`, and `dailyStatsAvgDays`. Every rung dry-run
+reported clean because it only counted rows. Migration
+`20260801000000_restore_fork_settings_columns` puts them back; this step proves it.
+
+```bash
+npx prisma migrate diff \
+  --from-schema-datasource prisma/schema.prisma \
+  --to-schema-datamodel prisma/schema.prisma --script
+```
+
+Expected: **no SQL statements** — the database matches the schema exactly. Any
+`CREATE TABLE "new_…"` in the output means a table rebuild dropped fork columns and
+the repair migration needs extending to cover them.
+
+Then prove the generated Prisma client can actually write `Settings`, which is what
+fails first when a column is missing (`P2022`, and the container cannot boot because
+`docker-startup.sh` runs this on every start):
+
+```bash
+DATABASE_URL="file:$(pwd)/db/sync-test.db" node scripts/convert-solids-feeds.js
+```
+
+Expected: it completes without a Prisma error.
+
 - [ ] **Step 3: Confirm our 350 translation keys survived all eight rungs**
 
 ```bash
@@ -1266,6 +1399,41 @@ Walk all four of our features plus the headline upstream ones:
 
 Stop the dev server. Delete any test entries created.
 
+- [ ] **Step 4b: Dry-run the startup data converter**
+
+Prisma migrations are not the only thing that mutates production data on deploy.
+`docker-startup.sh:130` runs `node scripts/convert-solids-feeds.js` on **every**
+container start, and the same code runs from `/api/database/migrate*` after a backup
+restore. It is not a Prisma migration, so the migration dry-runs in the rung tasks
+never exercise it.
+
+Unlike the Prisma CLI, this script honours `DATABASE_URL` — it passes a `datasources`
+override to `PrismaClient` when the variable is set. Point it at the scratch copy with
+an **absolute** path:
+
+```bash
+md5sum db/baby-tracker.db
+sqlite3 db/sync-test.db "SELECT activitySettings FROM Settings WHERE activitySettings IS NOT NULL;"
+DATABASE_URL="file:$(pwd)/db/sync-test.db" node scripts/convert-solids-feeds.js
+sqlite3 db/sync-test.db "SELECT activitySettings FROM Settings WHERE activitySettings IS NOT NULL;"
+sqlite3 db/sync-test.db "SELECT 'potty', COUNT(*) FROM PottyLog UNION ALL SELECT 'feed', COUNT(*) FROM FeedLog UNION ALL SELECT 'food', COUNT(*) FROM FoodLog;"
+md5sum db/baby-tracker.db
+```
+
+Expected, verified 2026-08-24 against the production snapshot:
+
+- Output reads `no SOLIDS feeds found, nothing to do. Food tile placed for 1 caretaker setting(s).`
+- `activitySettings` gains `"food"` spliced into `order` directly after `"feed"`, and
+  appended to `visible`. **`"potty"` keeps its position relative to `"diaper"`** — its
+  index shifts by one, nothing more.
+- Row counts unchanged: potty **24**, feed **701**, food **0**.
+- The two `md5sum` values match, proving `db/baby-tracker.db` was never opened.
+
+**Consequence for cutover:** on the first boot after deploy a **Food tile appears on
+the log-entry screen, visible by default**. That is the only change this release makes
+to live data for this family — there are no SOLIDS feeds to convert. Hiding the tile
+is a manual toggle in settings afterwards; the merge cannot pre-empt it.
+
 - [ ] **Step 5: Verify the Docker image builds**
 
 The ktn deploy builds this image. A broken Dockerfile fails after cutover, not before.
@@ -1286,27 +1454,85 @@ Expected: the WHO growth data files are present in the image.
 
 ### Task 15: Cutover to main and deploy
 
-- [ ] **Step 1: Back up the real database again**
+**Read this before running anything in this task.**
 
-Time has passed since Task 1 and real entries have been logged since.
+The ktn container runs `npx prisma migrate deploy` on every startup
+(`docker-startup.sh:80`) against the live database in the `sprout-track_db-data`
+volume, with **no backup step of its own**. So the push in Step 5 is what actually
+migrates production — unattended, seconds after the image lands. The local
+`db/baby-tracker.db` is a stale June dev copy and is not the data at risk.
+
+Two consequences of the 1.3.5 security patch that land at this same moment:
+
+- **Everyone is logged out.** Upstream replaced the hardcoded JWT fallback with a
+  generated per-deployment `JWT_SECRET`. Existing sessions were signed with the old
+  hardcoded secret and become invalid. This is upstream's intent, not a defect.
+- `env:ensure` generates that secret inside the container on first boot, so no
+  manual step is needed — but the first request after deploy may lag while it seeds.
+
+- [ ] **Step 1: Back up the LIVE ktn volumes — this is the gate**
+
+```bash
+./ktn-scripts/backup-db.sh
+```
+
+Expected: three `.tar.gz` files (db, env, files) listed on both ktn and this laptop,
+under `/tmp/sprout-track-backup-<timestamp>`. **Write that path down** — it is the
+rollback. Do not proceed to any later step until this has succeeded.
+
+- [ ] **Step 2: Record the LIVE database's baseline counts**
+
+```bash
+SNAP=$(mktemp -d)
+ssh ktn "docker run --rm -v sprout-track_db-data:/data:ro -v /tmp:/out alpine cp /data/baby-tracker.db /out/pre-cutover.db"
+scp -q ktn:/tmp/pre-cutover.db "$SNAP/"
+ssh ktn "rm -f /tmp/pre-cutover.db"
+sqlite3 "$SNAP/pre-cutover.db" "SELECT 'potty', COUNT(*) FROM PottyLog UNION ALL SELECT 'feed', COUNT(*) FROM FeedLog UNION ALL SELECT 'diaper', COUNT(*) FROM DiaperLog UNION ALL SELECT 'sleep', COUNT(*) FROM SleepLog;"
+echo "baseline snapshot kept at $SNAP/pre-cutover.db"
+```
+
+Write all four numbers down and keep that snapshot until Step 6 confirms the deploy.
+
+**Also capture all three fork `Settings` values — the deploy destroys them.** Upstream's
+WHO migration rebuilds `Settings` and discards this fork's columns; migration
+`20260801000000` re-adds the columns but **cannot recover their values**, because the
+data is gone before it runs. The columns come back at their schema defaults.
+
+Capture all three, not just `hueConfig`. As of the 2026-08-24 rehearsal
+`dailyStatsAvgDays` was `5` and `pottyLocationSettings` was `NULL` — both already at
+their defaults, so they would survive by coincidence. **Do not rely on that.** If either
+has been changed by cutover time, defaults would silently overwrite it, and a
+before/after comparison of the value would still look identical.
+
+```bash
+sqlite3 -noheader "$SNAP/pre-cutover.db" \
+  "SELECT id || '|' || COALESCE(dailyStatsAvgDays,'') || '|' || COALESCE(pottyLocationSettings,'') FROM Settings;" \
+  > "$SNAP/forkSettings.saved"
+cat "$SNAP/forkSettings.saved"
+
+sqlite3 -noheader "$SNAP/pre-cutover.db" "SELECT hueConfig FROM Settings WHERE hueConfig IS NOT NULL;" > "$SNAP/hueConfig.saved"
+printf '%s' "$(cat "$SNAP/hueConfig.saved")" > "$SNAP/hueConfig.trimmed"
+md5sum "$SNAP/hueConfig.trimmed"
+```
+
+Expected: a `<settingsId>|<avgDays>|<pottyLocationJson>` line, and a non-empty JSON blob
+beginning `{"buttons":[…`. **Record the md5** — Step 6b checks the restored value against
+it. Keep both files.
+As of 2026-08-24 the baseline was potty 24, feed 701, diaper 759, sleep 327; expect
+these to have grown by cutover time, since the family is actively logging.
+
+- [ ] **Step 2b: Back up the local dev database too**
+
+Secondary, but cheap:
 
 ```bash
 STAMP=$(date +%Y%m%d-%H%M%S)
-cp /db/baby-tracker.db "/db/baby-tracker.db.pre-cutover-${STAMP}.bak"
-cp /db/baby-tracker-logs.db "/db/baby-tracker-logs.db.pre-cutover-${STAMP}.bak"
-ls -la /db/*pre-cutover* 
+cp db/baby-tracker.db "db/baby-tracker.db.pre-cutover-${STAMP}.bak"
+cp db/baby-tracker-logs.db "db/baby-tracker-logs.db.pre-cutover-${STAMP}.bak"
+ls -la db/*pre-cutover*
 ```
 
 Expected: two fresh `.bak` files.
-
-- [ ] **Step 2: Record the real database's potty and feed counts**
-
-```bash
-sqlite3 /db/baby-tracker.db "SELECT COUNT(*) AS potty FROM PottyLog;"
-sqlite3 /db/baby-tracker.db "SELECT COUNT(*) AS solid_feeds FROM FeedLog WHERE type = 'SOLIDS';"
-```
-
-Write both numbers down.
 
 - [ ] **Step 3: Merge to main**
 
@@ -1320,8 +1546,8 @@ git log --oneline -1
 
 ```bash
 npx prisma migrate deploy
-sqlite3 /db/baby-tracker.db "SELECT COUNT(*) AS potty FROM PottyLog;"
-sqlite3 /db/baby-tracker.db "SELECT COUNT(*) AS food FROM FoodLog;"
+sqlite3 db/baby-tracker.db "SELECT COUNT(*) AS potty FROM PottyLog;"
+sqlite3 db/baby-tracker.db "SELECT COUNT(*) AS food FROM FoodLog;"
 ```
 
 Expected: `All migrations have been successfully applied.` The potty count matches Step 2 exactly. The food count reflects the converted solid feeds from Step 2.
@@ -1344,18 +1570,109 @@ gh run list --limit 3
 
 Expected: `build & publish` succeeds, then `Deploy to ktn` succeeds.
 
-- [ ] **Step 6: Verify on ktn**
-
-Open the deployed app and confirm: login works, the log-entry screen renders, a potty entry saves, our nursery mode loads, and the version shows 1.6.5.
-
-- [ ] **Step 7: Clean up the scratch database and branch**
+Watch the container migrate the live database as it starts:
 
 ```bash
-rm -f /db/sync-test.db
+./ktn-scripts/logs.sh
+```
+
+Expected: `Running database migrations...` followed by Prisma applying upstream's
+pending migrations and `All migrations have been successfully applied.` Ctrl-C once
+the app is serving.
+
+- [ ] **Step 6: Verify the live data survived**
+
+Before touching the UI, prove the migration did not lose rows:
+
+```bash
+SNAP2=$(mktemp -d)
+ssh ktn "docker run --rm -v sprout-track_db-data:/data:ro -v /tmp:/out alpine cp /data/baby-tracker.db /out/post-cutover.db"
+scp -q ktn:/tmp/post-cutover.db "$SNAP2/"
+ssh ktn "rm -f /tmp/post-cutover.db"
+sqlite3 "$SNAP2/post-cutover.db" "SELECT 'potty', COUNT(*) FROM PottyLog UNION ALL SELECT 'feed', COUNT(*) FROM FeedLog UNION ALL SELECT 'diaper', COUNT(*) FROM DiaperLog UNION ALL SELECT 'sleep', COUNT(*) FROM SleepLog;"
+sqlite3 "$SNAP2/post-cutover.db" "SELECT COALESCE(bottleType,'(null)'), COUNT(*) FROM FeedLog GROUP BY bottleType;"
+```
+
+Expected: potty, feed, diaper, and sleep counts all **match or exceed** the Step 2
+baseline (they can only grow — the family may have logged during the deploy). No
+`Formula\Breast` rows remain; those have moved to upstream's canonical mixed value.
+
+**If any count dropped, roll back immediately** using the backup from Step 1:
+
+```bash
+ssh ktn "docker compose -f /opt/services/sprout-track/docker-compose.yml -f /opt/services/sprout-track/docker-compose.ktn.yml down"
+ssh ktn "docker run --rm -v sprout-track_db-data:/data -v <backup-path>:/backup:ro alpine sh -c 'rm -rf /data/* && tar xzf /backup/sprout-track_db-data.tar.gz -C /data'"
+```
+
+Then revert the merge on `main` and re-deploy before investigating.
+
+- [ ] **Step 6b: Restore the three fork `Settings` values on the live database**
+
+The columns are back (migration `20260801000000`) but hold schema defaults. Write the
+Step 2 captures back.
+
+**`hueConfig` must be stored as TEXT.** `readfile()` alone yields a BLOB, and Prisma then
+rejects the field with a *type* error rather than a missing-column error — which reads
+like a completely different bug. The `CAST` and the newline trim both matter; this was
+found the hard way during the rehearsal, where the first restore attempt corrupted the
+value while reporting a plausible-looking character count.
+
+Scope the `UPDATE` by settings id from the captured line, so a future multi-family
+database cannot have one family's config written across all rows.
+
+```bash
+SETTINGS_ID=$(cut -d'|' -f1 "$SNAP/forkSettings.saved")
+AVG_DAYS=$(cut -d'|' -f2 "$SNAP/forkSettings.saved")
+POTTY_LOC=$(cut -d'|' -f3 "$SNAP/forkSettings.saved")
+
+ssh ktn "mkdir -p /tmp/huerestore"
+scp -q "$SNAP/hueConfig.trimmed" ktn:/tmp/huerestore/hue.txt
+ssh ktn "docker run --rm -v sprout-track_db-data:/data -v /tmp/huerestore:/in:ro \
+  keinos/sqlite3 sqlite3 /data/baby-tracker.db \
+  \"UPDATE Settings SET hueConfig = CAST(readfile('/in/hue.txt') AS TEXT) WHERE id = '$SETTINGS_ID';\""
+
+# Only if they were non-default at capture time; skip a blank POTTY_LOC.
+[ -n "$AVG_DAYS" ] && ssh ktn "docker run --rm -v sprout-track_db-data:/data keinos/sqlite3 \
+  sqlite3 /data/baby-tracker.db \"UPDATE Settings SET dailyStatsAvgDays = $AVG_DAYS WHERE id = '$SETTINGS_ID';\""
+[ -n "$POTTY_LOC" ] && ssh ktn "docker run --rm -v sprout-track_db-data:/data keinos/sqlite3 \
+  sqlite3 /data/baby-tracker.db \"UPDATE Settings SET pottyLocationSettings = '$POTTY_LOC' WHERE id = '$SETTINGS_ID';\""
+ssh ktn "rm -rf /tmp/huerestore"
+```
+
+Verify the restore is byte-identical rather than merely the right length:
+
+```bash
+ssh ktn "docker run --rm -v sprout-track_db-data:/data:ro keinos/sqlite3 sqlite3 /data/baby-tracker.db \
+  \"SELECT hueConfig FROM Settings WHERE id = '$SETTINGS_ID';\"" | tr -d '\n' > "$SNAP/hue.check"
+md5sum "$SNAP/hue.check" "$SNAP/hueConfig.trimmed"
+ssh ktn "docker run --rm -v sprout-track_db-data:/data:ro keinos/sqlite3 sqlite3 /data/baby-tracker.db \
+  \"SELECT typeof(hueConfig), dailyStatsAvgDays, COALESCE(pottyLocationSettings,'NULL') FROM Settings WHERE id = '$SETTINGS_ID';\""
+```
+
+Expected: **the two md5 sums match**, `typeof` is `text`, and the other two values equal
+what Step 2 captured. If the sqlite3 image is unavailable on ktn, run the same
+statements through any image with sqlite3 and the volume mounted.
+
+Then confirm the day-night flip Hue buttons render in the app before moving on.
+
+- [ ] **Step 7: Verify the app**
+
+Open the deployed app and confirm: login works (**you will have to log in again — the
+JWT secret changed**), the log-entry screen renders, a potty entry saves, our nursery
+mode loads, and the version shows 1.6.5.
+
+- [ ] **Step 8: Clean up**
+
+Only after Step 6 and Step 7 both pass:
+
+```bash
+rm -f db/sync-test.db prisma/sync-test.prisma
 git branch -d sync/upstream-1.6.5
 ```
 
-Keep the `.bak` files.
+`db/sync-test.db` holds a copy of production data — delete it once the sync is
+confirmed. Keep the `.bak` files and the ktn backup tarballs until you are confident
+the deploy is healthy; `backup-db.sh` prints its own cleanup command.
 
 ---
 
@@ -1389,12 +1706,15 @@ accumulate and it became a multi-day project — see
    `git tag --sort=-v:refname | head`
 2. Branch: `git checkout -b sync/upstream-<version>`
 3. Back up the real database before any migration:
-   `cp /db/baby-tracker.db /db/baby-tracker.db.pre-upstream-$(date +%Y%m%d-%H%M%S).bak`
+   `cp db/baby-tracker.db db/baby-tracker.db.pre-upstream-$(date +%Y%m%d-%H%M%S).bak`
 4. Merge one tag at a time: `git merge <tag> --no-commit --no-ff`
 5. Resolve using the recipes below.
 6. Verify: `npx tsc --noEmit && npm run build && npm run test`
-7. Migrate a copy first: `cp /db/baby-tracker.db /db/sync-test.db` then
-   `DATABASE_URL="file:/db/sync-test.db" npx prisma migrate deploy`
+7. Migrate a copy first: `cp db/baby-tracker.db db/sync-test.db` then
+   The datasource URL is a literal in `schema.prisma` (Prisma requires it — see
+   `scripts/prisma-provider.js`), so `DATABASE_URL` is ignored. Use a scratch schema:
+   `sed 's|url      = "file:../db/baby-tracker.db"|url      = "file:../db/sync-test.db"|' prisma/schema.prisma > prisma/sync-test.prisma`
+   then `npx prisma migrate deploy --schema=prisma/sync-test.prisma`
 8. Merge to `main` only when done — a push to `main` deploys to ktn.
 
 ## Conflict recipes

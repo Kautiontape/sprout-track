@@ -22,39 +22,25 @@ import {
   Plus,
   Minus,
   Syringe,
-  Toilet
+  Camera,
+  Utensils,
+  Apple
 } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
-import { 
-  ActivityType, 
-  ActivityDetails, 
-  ActivityDescription, 
-  ActivityStyle 
+import {
+  ActivityType,
+  ActivityDetails,
+  ActivityDescription,
+  ActivityStyle
 } from './types';
 import { getSymbol } from '@/src/hooks/useUnit';
+import { FOOD_ENJOYMENT_LABELS, formatFoodMealTitle, isFoodLogActivity, isValidEnjoyment } from '@/src/utils/foodLogUtils';
+import { lbToLbOz, formatWeightDisplay } from '@/src/utils/weightUnits';
+import { formatPauseDuration } from '@/src/utils/pauseDisplay';
+import { isDirtyDiaper } from '@/src/utils/diaperStats';
+import { localizeSleepLocation } from '@/src/utils/sleepLocationUtils';
 
-// Split decimal pounds into whole pounds and ounces (to 1 decimal place).
-// Rolls over when ounces round up to 16.
-export function lbToLbOz(value: number): { lbs: number; oz: number } {
-  let lbs = Math.floor(value);
-  let oz = Math.round((value - lbs) * 16 * 10) / 10;
-  if (oz >= 16) {
-    lbs += 1;
-    oz -= 16;
-  }
-  return { lbs, oz };
-}
-
-export function formatWeightDisplay(value: number, unit: string): string {
-  if (unit.toLowerCase() === 'lb') {
-    const { lbs, oz } = lbToLbOz(value);
-    if (lbs === 0 && oz === 0) return `0 lbs`;
-    if (lbs === 0) return `${oz} oz`;
-    if (oz === 0) return `${lbs} lbs`;
-    return `${lbs} lb ${oz} oz`;
-  }
-  return `${value} ${unit}`;
-}
+export { lbToLbOz, formatWeightDisplay };
 
 const PLAY_TYPES = ['TUMMY_TIME', 'INDOOR_PLAY', 'OUTDOOR_PLAY', 'WALK', 'CUSTOM'];
 
@@ -66,73 +52,88 @@ const isPlayActivity = (activity: any): boolean => {
 const pottyTypeLabel = (type: string, t: (key: string) => string): string =>
   type === 'WET' ? t('Pee') : type === 'DIRTY' ? t('Poop') : t('Pee and Poop');
 
+// EXPLORATION: render the activity's real PNG illustration instead of a mono
+// lucide glyph. `timeline-png-icon` lets the CSS strip the colored box padding
+// so the circular illustration fills the icon slot cleanly. The 36px size lives
+// on the img itself (not the slot) so it renders identically in every consumer —
+// timeline, V2 timeline and full log — regardless of the slot's own sizing.
+const pngIcon = (src: string) => (
+  <img src={src} alt="" aria-hidden="true" className="timeline-png-icon block h-9 w-9 object-contain" />
+);
+
 export const getActivityIcon = (activity: ActivityType) => {
+  // Photo log - check first since it has no overlapping fields with other types
+  if ('photoLogId' in activity) {
+    return pngIcon('/photo-192.png');
+  }
+  // Food log (issue #203 / #247) — foodId or foods JSON
+  if (isFoodLogActivity(activity)) {
+    return pngIcon('/food-256.png');
+  }
   // Play activity - check before sleep since both have duration and type
   if (isPlayActivity(activity)) {
-    return <Baby className="h-4 w-4 text-black" />;
+    return pngIcon('/activity-128.png');
   }
   if ('doseAmount' in activity && 'medicineId' in activity) {
-    // Medicine or supplement log
-    if ('medicine' in activity && activity.medicine && typeof activity.medicine === 'object' && 'isSupplement' in activity.medicine && activity.medicine.isSupplement) {
-      return <Pill className="h-4 w-4 text-white" />;
-    }
-    return <PillBottle className="h-4 w-4 text-white" />;
+    // Medicine or supplement log (no separate supplement art yet)
+    return pngIcon('/med-128.png');
   }
-  // Check for breast milk adjustment BEFORE pump (both have amount)
+  // Check for breast milk adjustment BEFORE pump (both have amount) - no PNG art,
+  // keep the lucide +/- glyph on the purple box
   if ('reason' in activity && 'amount' in activity && !('type' in activity) && !('leftAmount' in activity)) {
     const amt = (activity as any).amount;
     if (amt < 0) {
-      return <Minus className="h-4 w-4 text-black" />;
+      return <Minus className="h-4 w-4 text-black" aria-hidden="true" />;
     }
-    return <Plus className="h-4 w-4 text-black" />;
+    return <Plus className="h-4 w-4 text-black" aria-hidden="true" />;
   }
   // Check for pump activities FIRST (before sleep) since they also have duration and startTime
   if ('leftAmount' in activity || 'rightAmount' in activity) {
-    return <LampWallDown className="h-4 w-4 text-black" />; // Pump activity
+    return pngIcon('/pump-128.png'); // Pump activity
   }
   if ('type' in activity) {
     if ('duration' in activity) {
-      return <Moon className="h-4 w-4 text-white" />; // Sleep activity
+      return pngIcon('/crib-128.png'); // Sleep activity
     }
     if ('amount' in activity) {
-      return <Icon iconNode={bottleBaby} className="h-4 w-4 text-gray-700" />; // Feed activity
+      if ((activity as any).type === 'SOLIDS') {
+        return pngIcon('/solids-128.png'); // Solids feed
+      }
+      return pngIcon('/bottle-128.png'); // Feed activity
     }
     if ('pottyLocation' in activity) {
-      return <Toilet className="h-4 w-4 text-white" />; // Potty activity
+      return pngIcon('/potty-128.png'); // Potty activity
     }
     if ('condition' in activity) {
-      return <Icon iconNode={diaper} className="h-4 w-4 text-white" />; // Diaper activity
+      return pngIcon('/diaper-128.png'); // Diaper activity
     }
   }
   if ('content' in activity) {
-    return <Edit className="h-4 w-4 text-gray-700" />; // Note activity
+    return pngIcon('/note-128.png'); // Note activity
   }
   if ('soapUsed' in activity) {
-    return <Bath className="h-4 w-4 text-white" />; // Bath activity
+    return pngIcon('/bath-128.png'); // Bath activity
   }
   if ('vaccineName' in activity) {
-    return <Syringe className="h-4 w-4 text-red-500" />;
+    return pngIcon('/vaccine-128.png');
   }
   if ('title' in activity && 'category' in activity) {
-    return <Trophy className="h-4 w-4 text-white" />; // Milestone activity
+    return pngIcon('/milestone-128.png'); // Milestone activity
   }
   if ('value' in activity && 'unit' in activity) {
-    // Different icons based on measurement type
-    if ('type' in activity) {
-      switch (activity.type) {
-        case 'HEIGHT':
-          return <Ruler className="h-4 w-4 text-white" />;
-        case 'WEIGHT':
-          return <Scale className="h-4 w-4 text-white" />;
-        case 'HEAD_CIRCUMFERENCE':
-          return <RotateCw className="h-4 w-4 text-white" />;
-        case 'TEMPERATURE':
-          return <Thermometer className="h-4 w-4 text-white" />;
-        default:
-          return <Ruler className="h-4 w-4 text-white" />; // Default to ruler
-      }
+    // Per-type measurement illustrations, falling back to the generic icon
+    switch (activity.type) {
+      case 'WEIGHT':
+        return pngIcon('/weight-192.png');
+      case 'HEIGHT':
+        return pngIcon('/height-192.png');
+      case 'HEAD_CIRCUMFERENCE':
+        return pngIcon('/hc-measurement-192.png');
+      case 'TEMPERATURE':
+        return pngIcon('/temperature-192.png');
+      default:
+        return pngIcon('/measurement-128.png');
     }
-    return <Ruler className="h-4 w-4 text-white" />; // Default measurement icon
   }
   return null;
 };
@@ -202,6 +203,47 @@ export const getActivityDetails = (activity: ActivityType, settings: Settings | 
     { label: t('Caretaker'), value: activity.caretakerName }
   ] : [];
 
+  // Food log (issue #203 / #247)
+  if (isFoodLogActivity(activity)) {
+    const foodLog = activity as any;
+    const enjoyment: unknown = foodLog.enjoyment;
+    const names: string[] =
+      (Array.isArray(foodLog.foodItems) && foodLog.foodItems.length > 0
+        ? foodLog.foodItems.map((item: { name?: string }) => item.name).filter(Boolean)
+        : null) ||
+      (foodLog.food?.name ? [foodLog.food.name] : []);
+    const mealTitle = formatFoodMealTitle(names) || t('unknown');
+    const foodDetails = [
+      { label: t('Food'), value: mealTitle },
+      { label: t('Time'), value: formatTime(foodLog.time, settings, true, t) },
+    ];
+    if (foodLog.amount) {
+      foodDetails.push({ label: t('Amount'), value: `${foodLog.amount} ${getSymbol(foodLog.unitAbbr, t)}`.trim() });
+    }
+    if (isValidEnjoyment(enjoyment)) {
+      foodDetails.push({ label: t('Enjoyment'), value: t(FOOD_ENJOYMENT_LABELS[enjoyment]) });
+    }
+    const anyCommonAllergen =
+      foodLog.food?.commonAllergen ||
+      (Array.isArray(foodLog.foodItems) && foodLog.foodItems.some((item: { commonAllergen?: boolean }) => item.commonAllergen));
+    if (anyCommonAllergen) {
+      foodDetails.push({ label: t('Common Allergen'), value: t('Yes') });
+    }
+    if (foodLog.isFirstTry) {
+      foodDetails.push({ label: t('First Try'), value: t('Yes') });
+    }
+    if (foodLog.hadReaction) {
+      foodDetails.push({ label: t('Reaction'), value: foodLog.reactionDescription || t('Yes') });
+    }
+    if (foodLog.notes) {
+      foodDetails.push({ label: t('Notes'), value: foodLog.notes });
+    }
+    return {
+      title: t('Food Record'),
+      details: [...foodDetails, ...caretakerDetail],
+    };
+  }
+
   // Play activity - check before sleep since both have duration and type
   if (isPlayActivity(activity)) {
     const formatPlayType = (type: string) => {
@@ -255,7 +297,7 @@ export const getActivityDetails = (activity: ActivityType, settings: Settings | 
       const formatLocation = (location: string) => {
         if (location === 'OTHER') return t('Other');
         
-        return t(location);
+        return localizeSleepLocation(location, t);
       };
       const details = [
         { label: t('Type'), value: activity.type === 'NAP' ? t('Nap') : t('Night Sleep') },
@@ -284,6 +326,11 @@ export const getActivityDetails = (activity: ActivityType, settings: Settings | 
       // Always show location if specified (SleepLog only)
       if ((activity as any).location) {
         details.push({ label: t('Location'), value: formatLocation((activity as any).location) });
+      }
+
+      // Show notes if present
+      if ((activity as any).notes) {
+        details.push({ label: t('Notes'), value: (activity as any).notes });
       }
 
       return {
@@ -319,7 +366,7 @@ export const getActivityDetails = (activity: ActivityType, settings: Settings | 
       // Show amount for bottle and solids - use unitAbbr instead of hardcoded units
       if (activity.amount && (activity.type === 'BOTTLE' || activity.type === 'SOLIDS')) {
         const unit = (activity as any).unitAbbr || (activity.type === 'BOTTLE' ? 'oz' : 'g');
-        if ((activity as any).bottleType === 'Formula\\Breast' && (activity as any).breastMilkAmount != null) {
+        if ((activity as any).bottleType === 'Formula/Breast' && (activity as any).breastMilkAmount != null) {
           const bmAmt = (activity as any).breastMilkAmount;
           const formulaAmt = Math.round((activity.amount - bmAmt) * 100) / 100;
           details.push({ label: t('Breast Milk Amount'), value: `${bmAmt} ${unit}` });
@@ -352,6 +399,11 @@ export const getActivityDetails = (activity: ActivityType, settings: Settings | 
         } else if (activity.amount) {
           details.push({ label: t('Duration'), value: `${activity.amount} ${t('minutes')}` });
         }
+
+        const pauseText = formatPauseDuration((activity as any).pauseDuration ?? 0, t);
+        if (pauseText) {
+          details.push({ label: t('Pause'), value: pauseText });
+        }
       }
 
       // Show food for solids
@@ -362,10 +414,18 @@ export const getActivityDetails = (activity: ActivityType, settings: Settings | 
       // Show bottle type for bottle feeds
       if (activity.type === 'BOTTLE' && (activity as any).bottleType) {
         const bottleType = (activity as any).bottleType;
-        details.push({ 
-          label: t('Bottle Type'), 
-          value: t(bottleType.replace('\\', '/')) 
+        details.push({
+          label: t('Bottle Type'),
+          value: t(bottleType)
         });
+      }
+
+      // Show reaction for all feed types if flagged
+      if ((activity as any).hadReaction) {
+        details.push({ label: t('Reaction'), value: (activity as any).reactionDescription || t('Yes') });
+        if ((activity as any).reactionCause) {
+          details.push({ label: t('Cause'), value: (activity as any).reactionCause });
+        }
       }
 
       // Show notes for all feed types if present
@@ -402,6 +462,7 @@ export const getActivityDetails = (activity: ActivityType, settings: Settings | 
           case 'WET': return t('Wet');
           case 'DIRTY': return t('Dirty');
           case 'BOTH': return t('Wet and Dirty');
+          case 'DRY': return t('Dry');
           default: return t(capitalize(type));
         }
       };
@@ -429,7 +490,7 @@ export const getActivityDetails = (activity: ActivityType, settings: Settings | 
       ];
 
       // Only show condition and color for DIRTY or BOTH types
-      if (activity.type !== 'WET') {
+      if (isDirtyDiaper(activity.type)) {
         if (activity.condition) {
           details.push({ label: t('Condition'), value: formatDiaperCondition(activity.condition) });
         }
@@ -444,6 +505,10 @@ export const getActivityDetails = (activity: ActivityType, settings: Settings | 
       }
       if (activity.creamApplied) {
         details.push({ label: t('Diaper Cream Applied'), value: t('Yes') });
+      }
+
+      if ((activity as any).notes) {
+        details.push({ label: t('Notes'), value: (activity as any).notes });
       }
 
       return {
@@ -467,6 +532,8 @@ export const getActivityDetails = (activity: ActivityType, settings: Settings | 
   if ('soapUsed' in activity) {
     const bathDetails = [
       { label: t('Time'), value: formatTime(activity.time, settings, true, t) },
+      // Custom bath types pass through t() unchanged; defaults get translated
+      ...((activity as any).bathType ? [{ label: t('Bath Type'), value: t((activity as any).bathType) }] : []),
       { label: t('Soap Used'), value: activity.soapUsed ? t('Yes') : t('No') },
       { label: t('Shampoo Used'), value: activity.shampooUsed ? t('Yes') : t('No') },
     ];
@@ -671,6 +738,43 @@ export const getActivityDetails = (activity: ActivityType, settings: Settings | 
 };
 
 export const getActivityDescription = (activity: ActivityType, settings: Settings | null, t: (key: string) => string): ActivityDescription => {
+  // Photo log - check first since it has no overlapping fields with other types
+  if ('photoLogId' in activity) {
+    const photos = activity.photos;
+    const firstCaption = photos?.find(p => p.caption)?.caption;
+    const count = photos?.length ?? 0;
+    return {
+      type: t('Photo'),
+      details: firstCaption || `${count} ${count === 1 ? t('photo') : t('photos')}`
+    };
+  }
+  // Food log (issue #203 / #247)
+  if (isFoodLogActivity(activity)) {
+    const foodLog = activity as any;
+    const enjoyment: unknown = foodLog.enjoyment;
+    const time = formatTime(foodLog.time, settings, true, t);
+    const parts = [time];
+    if (foodLog.amount) {
+      parts.push(`${foodLog.amount} ${getSymbol(foodLog.unitAbbr, t)}`.trim());
+    }
+    if (isValidEnjoyment(enjoyment)) {
+      parts.push(t(FOOD_ENJOYMENT_LABELS[enjoyment]));
+    }
+    if (foodLog.isFirstTry) parts.push(t('First try!'));
+    if (foodLog.hadReaction) parts.push(t('Reaction'));
+    let notes: string = foodLog.notes ?? '';
+    if (notes.length > 30) notes = notes.slice(0, 30) + '...';
+    if (notes) parts.push(notes);
+    const names: string[] =
+      (Array.isArray(foodLog.foodItems) && foodLog.foodItems.length > 0
+        ? foodLog.foodItems.map((item: { name?: string }) => item.name).filter(Boolean)
+        : null) ||
+      (foodLog.food?.name ? [foodLog.food.name] : []);
+    return {
+      type: formatFoodMealTitle(names) || t('Food'),
+      details: parts.join(' • ')
+    };
+  }
   // Play activity - check before sleep since both have duration and type
   if (isPlayActivity(activity)) {
     const formatPlayType = (type: string) => {
@@ -724,7 +828,7 @@ export const getActivityDescription = (activity: ActivityType, settings: Setting
       if ((activity as any).location) {
         const loc = (activity as any).location;
         const location = loc === 'OTHER' ? t('Other') : capitalize(loc);
-        locationText = t(location);
+        locationText = localizeSleepLocation(location, t);
       }
       
       // Format quality
@@ -738,10 +842,16 @@ export const getActivityDescription = (activity: ActivityType, settings: Setting
         };
         qualityText = qualityMap[(activity as any).quality] || (activity as any).quality.charAt(0) + (activity as any).quality.slice(1).toLowerCase();
       }
-      
+
+      // Add notes if available, truncate if needed
+      let notesText: string = (activity as any).notes ?? '';
+      if (notesText.length > 30) {
+        notesText = notesText.slice(0, 30) + '...';
+      }
+
       return {
         type: activity.type === 'NAP' ? t('Nap') : t('Night Sleep'),
-        details: [time, locationText, qualityText].filter(Boolean).join(' • '),
+        details: [time, locationText, qualityText, notesText].filter(Boolean).join(' • '),
       };
     }
     if ('amount' in activity) {
@@ -776,13 +886,16 @@ export const getActivityDescription = (activity: ActivityType, settings: Setting
         } else if (activity.amount) {
           duration = `${activity.amount} ${t('min')}`;
         }
+
+        const pauseText = formatPauseDuration((activity as any).pauseDuration ?? 0, t);
+        const pause = pauseText ? `${t('Pause')}: ${pauseText}` : '';
         
-        details = [side, duration].filter(Boolean).join(' • ');
+        details = [side, duration, pause].filter(Boolean).join(' • ');
       } else if (activity.type === 'BOTTLE') {
         // Use unitAbbr instead of hardcoded 'oz'
         const unit = ((activity as any).unitAbbr || 'oz').toLowerCase();
 
-        if ((activity as any).bottleType === 'Formula\\Breast' && (activity as any).breastMilkAmount != null) {
+        if ((activity as any).bottleType === 'Formula/Breast' && (activity as any).breastMilkAmount != null) {
           const bmAmt = (activity as any).breastMilkAmount;
           const formulaAmt = Math.round((((activity as any).amount || 0) - bmAmt) * 100) / 100;
           details = `${bmAmt} ${unit} ${t('BM')} + ${formulaAmt} ${unit} ${t('Formula')}`;
@@ -791,10 +904,10 @@ export const getActivityDescription = (activity: ActivityType, settings: Setting
         }
 
         // Add bottle type if available (skip for mixed since already shown above)
-        if ((activity as any).bottleType && (activity as any).bottleType !== 'Formula\\Breast') {
-          const bottleType = (activity as any).bottleType.replace('\\', '/');
+        if ((activity as any).bottleType && (activity as any).bottleType !== 'Formula/Breast') {
+          const bottleType = (activity as any).bottleType;
           details += ` (${t(bottleType)})`;
-        } else if ((activity as any).bottleType === 'Formula\\Breast' && !(activity as any).breastMilkAmount) {
+        } else if ((activity as any).bottleType === 'Formula/Breast' && !(activity as any).breastMilkAmount) {
           details += ` (${t('Formula/Breast')})`;
         }
       } else if (activity.type === 'SOLIDS') {
@@ -836,6 +949,7 @@ export const getActivityDescription = (activity: ActivityType, settings: Setting
           case 'WET': return t('Wet');
           case 'DIRTY': return t('Dirty');
           case 'BOTH': return t('Wet and Dirty');
+          case 'DRY': return t('Dry');
           default: return t(capitalize(type));
         }
       };
@@ -859,7 +973,7 @@ export const getActivityDescription = (activity: ActivityType, settings: Setting
       };
       
       const conditions = [];
-      if (activity.type !== 'WET') {
+      if (isDirtyDiaper(activity.type)) {
         if (activity.condition) conditions.push(formatDiaperCondition(activity.condition));
         if (activity.color) conditions.push(formatDiaperColor(activity.color));
       }
@@ -868,10 +982,16 @@ export const getActivityDescription = (activity: ActivityType, settings: Setting
       const blowout = activity.blowout ? t('Blowout/Leakage') : '';
       const cream = activity.creamApplied ? t('Diaper Cream Applied') : '';
 
+      // Add notes if available, truncate if needed
+      let notesText: string = (activity as any).notes ?? '';
+      if (notesText.length > 30) {
+        notesText = notesText.slice(0, 30) + '...';
+      }
+
       const time = formatTime(activity.time, settings, true, t);
       return {
         type: formatDiaperType(activity.type),
-        details: [time, ...conditions, blowout, cream].filter(Boolean).join(' • ')
+        details: [time, ...conditions, blowout, cream, notesText].filter(Boolean).join(' • ')
       };
     }
   }
@@ -900,9 +1020,11 @@ export const getActivityDescription = (activity: ActivityType, settings: Setting
       notes = notes.slice(0, 30) + '...';
     }
     
+    const bathType = (activity as any).bathType ? t((activity as any).bathType) : '';
+
     return {
       type: t('Bath'),
-      details: [time, bath, notes].filter(Boolean).join(' • ')
+      details: [time, bathType, bath, notes].filter(Boolean).join(' • ')
     };
   }
   
@@ -1043,6 +1165,9 @@ export const getActivityDescription = (activity: ActivityType, settings: Setting
 };
 
 export const getActivityEndpoint = (activity: ActivityType): string => {
+  if ('photoLogId' in activity) return 'photo-log';
+  // Food log (issue #203 / #247)
+  if (isFoodLogActivity(activity)) return 'food-log';
   // Check play activity before sleep since both have duration and type
   if (isPlayActivity(activity)) return 'play-log';
   // Check for breast milk adjustment before pump
@@ -1067,6 +1192,15 @@ export const getActivityEndpoint = (activity: ActivityType): string => {
 };
 
 export const getActivityStyle = (activity: ActivityType): ActivityStyle => {
+  // Photo log - check first since it has no overlapping fields with other types
+  if ('photoLogId' in activity) {
+    return { bg: 'bg-white border-2 border-[#e11d48]', textColor: 'text-[#e11d48]' };
+  }
+  // Food log (issue #203 / #247): lime green, distinct from medicine green (#43B755)
+  // and the sky-blue feed color
+  if (isFoodLogActivity(activity)) {
+    return { bg: 'bg-[#BBD444]', textColor: 'text-white' };
+  }
   // Play activity - check before sleep since both have duration and type
   if (isPlayActivity(activity)) {
     return { bg: 'bg-[#F3C4A2]', textColor: 'text-white' };

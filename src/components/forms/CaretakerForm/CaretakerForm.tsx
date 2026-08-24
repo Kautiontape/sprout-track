@@ -1,7 +1,7 @@
 'use client';
 
 import { Caretaker as PrismaCaretaker, UserRole } from '@prisma/client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { Button } from '@/src/components/ui/button';
 import { Input } from '@/src/components/ui/input';
 import {
@@ -16,10 +16,12 @@ import {
   FormPageContent, 
   FormPageFooter 
 } from '@/src/components/ui/form-page';
+import { StorybookDrawer } from '@/src/components/ui/storybook-drawer';
 import { caretakerFormStyles } from './caretaker-form.styles';
 import { useToast } from '@/src/components/ui/toast';
 import { handleExpirationError } from '@/src/lib/expiration-error-handler';
 import { useLocalization } from '@/src/context/localization';
+import { CARETAKER_BADGE_COLORS, getBadgeColorOption } from '@/src/constants/caretakerBadge';
 
 // Extended type to include the loginId field
 interface Caretaker extends PrismaCaretaker {
@@ -32,6 +34,8 @@ interface CaretakerFormProps {
   isEditing: boolean;
   caretaker: (PrismaCaretaker & { loginId?: string }) | null;
   onCaretakerChange?: () => void;
+  /** 'storybook' renders the stacked storybook drawer (account manager); default is the classic FormPage. */
+  appearance?: 'default' | 'storybook';
 }
 
 const defaultFormData = {
@@ -41,6 +45,7 @@ const defaultFormData = {
   role: 'USER' as UserRole,
   inactive: false,
   securityPin: '',
+  badgeColor: '', // '' = None (neutral gray badge)
 };
 
 export default function CaretakerForm({
@@ -49,9 +54,11 @@ export default function CaretakerForm({
   isEditing,
   caretaker,
   onCaretakerChange,
+  appearance = 'default',
 }: CaretakerFormProps) {
   const { t } = useLocalization();
   const { showToast } = useToast();
+  const formId = useId();
   const [formData, setFormData] = useState(defaultFormData);
   const [confirmPin, setConfirmPin] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -71,9 +78,10 @@ export default function CaretakerForm({
         type: caretaker.type || '',
         role: caretaker.role || 'USER',
         inactive: caretaker.inactive || false,
-        securityPin: caretaker.securityPin || '',
+        securityPin: '', // never pre-filled — PINs are not returned by the API; blank means "keep current"
+        badgeColor: (caretaker as { badgeColor?: string | null }).badgeColor || '',
       });
-      setConfirmPin(caretaker.securityPin || '');
+      setConfirmPin('');
       setIsFirstCaretaker(false);
     } else if (!isOpen && !isSubmitting) {
       setFormData(defaultFormData);
@@ -195,6 +203,11 @@ export default function CaretakerForm({
   }, [isEditing, isOpen, caretaker?.id]);
 
   const validatePIN = () => {
+    // When editing, a blank PIN means "keep the current PIN" (the PIN is never sent
+    // back from the server), so skip validation and leave it unchanged.
+    if (isEditing && !formData.securityPin) {
+      return true;
+    }
     if (formData.securityPin.length < 4) {
       setError(t('PIN must be at least 4 digits'));
       return false;
@@ -278,11 +291,17 @@ export default function CaretakerForm({
       }
 
       // Prepare request body with family context for sysadmins
-      const requestBody = {
+      const requestBody: any = {
         ...formData,
         id: caretaker?.id,
         ...(isSysAdmin && familyId && { familyId })
       };
+
+      // When editing, only send securityPin if a new one was entered; a blank field
+      // means "keep the existing PIN" (and the server ignores a blank PIN anyway).
+      if (isEditing && !formData.securityPin) {
+        delete requestBody.securityPin;
+      }
 
       const response = await fetch('/api/caretaker', {
         method: isEditing ? 'PUT' : 'POST',
@@ -345,6 +364,122 @@ export default function CaretakerForm({
     }
   };
 
+  if (appearance === 'storybook') {
+    return (
+      <StorybookDrawer
+        open={isOpen}
+        onClose={onClose}
+        onBack={onClose}
+        title={isEditing ? t('Edit caretaker') : t('Add a caretaker')}
+        subtitle={t('Anyone who helps — parents, grandparents, the nanny.')}
+        footer={
+          <>
+            <button type="button" className="sb-btn sb-ghost" onClick={onClose}>{t('Cancel')}</button>
+            <button type="submit" form="sb-caretaker-form" className="sb-btn" disabled={isSubmitting}>
+              {isSubmitting ? t('Saving…') : isEditing ? t('Save changes') : t('Add caretaker')}
+            </button>
+          </>
+        }
+      >
+        <form id="sb-caretaker-form" onSubmit={handleSubmit} className="sb-f-grid">
+          <div className="sb-f2">
+            <div>
+              <label className="sb-fl" htmlFor="sbCtName">{t('Name')}</label>
+              <input id="sbCtName" className="sb-fi" value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
+            </div>
+            <div>
+              <label className="sb-fl" htmlFor="sbCtType">
+                {t('Relationship')} <span className="sb-fl-opt">({t('optional')})</span>
+              </label>
+              <input id="sbCtType" className="sb-fi" placeholder={t('Grandma, nanny, dad…')}
+                value={formData.type || ''}
+                onChange={(e) => setFormData({ ...formData, type: e.target.value })} />
+            </div>
+          </div>
+          <div>
+            <label className="sb-fl" htmlFor="sbCtRole">{t('Role')}</label>
+            <select id="sbCtRole" className="sb-fi" value={formData.role} disabled={isFirstCaretaker}
+              onChange={(e) => setFormData({ ...formData, role: e.target.value as UserRole })}>
+              <option value="USER">{t('Regular user')}</option>
+              <option value="ADMIN">{t('Administrator')}</option>
+            </select>
+            <p className="sb-fh">{t('Admins can edit family settings and people.')}</p>
+          </div>
+          <div>
+            <label className="sb-fl" htmlFor="sbCtBadge">{t('Badge Color')}</label>
+            <div className="flex items-center gap-2">
+              <span
+                className="h-5 w-5 flex-shrink-0 rounded-full border border-black/10"
+                style={{ backgroundColor: getBadgeColorOption(formData.badgeColor)?.hex || '#e5e7eb' }}
+                aria-hidden="true"
+              />
+              <select id="sbCtBadge" className="sb-fi" value={formData.badgeColor}
+                onChange={(e) => setFormData({ ...formData, badgeColor: e.target.value })}>
+                <option value="">{t('None')}</option>
+                {CARETAKER_BADGE_COLORS.map((c) => (
+                  <option key={c.id} value={c.id}>{t(c.label)}</option>
+                ))}
+              </select>
+            </div>
+            <p className="sb-fh">{t('Shown as a colored badge next to this name on the timeline.')}</p>
+          </div>
+          <div className="sb-fgroup">
+            <b>{t('How they sign in')}</b>
+            <p className="sb-fh">{t("A 2-digit ID and a PIN — easy enough for grandma's phone.")}</p>
+            <div className="sb-f2">
+              <div>
+                <label className="sb-fl" htmlFor="sbCtId">{t('Login ID')}</label>
+                <input id="sbCtId" className="sb-fi" maxLength={2} inputMode="numeric" required
+                  value={formData.loginId}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/\D/g, '');
+                    // Only allow digits up to 2 characters
+                    if (value.length <= 2) {
+                      setFormData({ ...formData, loginId: value });
+                    }
+                  }} />
+                {loginIdError && <p className="sb-form-error">{loginIdError}</p>}
+              </div>
+              <div>
+                <label className="sb-fl" htmlFor="sbCtPin">
+                  {t('PIN')} <span className="sb-fl-opt">({t('6–10 digits')})</span>
+                </label>
+                <input id="sbCtPin" className="sb-fi" type="password" maxLength={10} inputMode="numeric"
+                  required={!isEditing} placeholder="••••••"
+                  value={formData.securityPin}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/\D/g, '');
+                    if (value.length <= 10) {
+                      setFormData({ ...formData, securityPin: value });
+                    }
+                  }} />
+              </div>
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <label className="sb-fl" htmlFor="sbCtPin2">{t('Confirm PIN')}</label>
+              <input id="sbCtPin2" className="sb-fi" type="password" maxLength={10} inputMode="numeric"
+                required={!isEditing} placeholder={t('Same PIN again')}
+                value={confirmPin}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, '');
+                  if (value.length <= 10) {
+                    setConfirmPin(value);
+                  }
+                }} />
+            </div>
+          </div>
+          <label className="sb-fcheck">
+            <input type="checkbox" checked={formData.inactive} disabled={isFirstCaretaker}
+              onChange={(e) => setFormData({ ...formData, inactive: e.target.checked })} />
+            <span>{t("Mark as inactive — they keep their history but can't sign in.")}</span>
+          </label>
+          {error && <p className="sb-form-error">{error}</p>}
+        </form>
+      </StorybookDrawer>
+    );
+  }
+
   return (
     <FormPage 
       isOpen={isOpen} 
@@ -359,8 +494,9 @@ export default function CaretakerForm({
         <FormPageContent className={caretakerFormStyles.content}>
           {usesLoginId && (
             <div>
-              <label className="form-label">{t('Login ID')}</label>
+              <label htmlFor={`${formId}-loginId`} className="form-label">{t('Login ID')}</label>
               <Input
+                id={`${formId}-loginId`}
                 value={formData.loginId}
                 onChange={(e) => {
                   const value = e.target.value.replace(/\D/g, '');
@@ -387,8 +523,9 @@ export default function CaretakerForm({
             </div>
           )}
           <div>
-            <label className="form-label">{t('Name')}</label>
+            <label htmlFor={`${formId}-name`} className="form-label">{t('Name')}</label>
             <Input
+              id={`${formId}-name`}
               value={formData.name}
               onChange={(e) =>
                 setFormData({ ...formData, name: e.target.value })
@@ -399,8 +536,9 @@ export default function CaretakerForm({
             />
           </div>
           <div>
-            <label className="form-label">{t('Type (Optional)')}</label>
+            <label htmlFor={`${formId}-type`} className="form-label">{t('Type (Optional)')}</label>
             <Input
+              id={`${formId}-type`}
               value={formData.type}
               onChange={(e) =>
                 setFormData({ ...formData, type: e.target.value })
@@ -410,7 +548,7 @@ export default function CaretakerForm({
             />
           </div>
           <div>
-            <label className="form-label">{t('Role')}</label>
+            <label htmlFor={`${formId}-role`} className="form-label">{t('Role')}</label>
             <Select
               value={formData.role}
               onValueChange={(value) =>
@@ -418,7 +556,7 @@ export default function CaretakerForm({
               }
               disabled={isFirstCaretaker}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id={`${formId}-role`} className="w-full">
                 <SelectValue placeholder={t("Select a role")} />
               </SelectTrigger>
               <SelectContent>
@@ -436,17 +574,50 @@ export default function CaretakerForm({
               </p>
             )}
           </div>
-          
+
+          <div>
+            <label htmlFor={`${formId}-badgeColor`} className="form-label">{t('Badge Color')}</label>
+            <Select
+              value={formData.badgeColor || 'none'}
+              onValueChange={(value) =>
+                setFormData({ ...formData, badgeColor: value === 'none' ? '' : value })
+              }
+            >
+              <SelectTrigger id={`${formId}-badgeColor`} className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">
+                  <span className="flex items-center gap-2">
+                    <span className="h-3.5 w-3.5 rounded-full border border-gray-300 bg-gray-200" aria-hidden="true" />
+                    {t('None')}
+                  </span>
+                </SelectItem>
+                {CARETAKER_BADGE_COLORS.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    <span className="flex items-center gap-2">
+                      <span className="h-3.5 w-3.5 rounded-full" style={{ backgroundColor: c.hex }} aria-hidden="true" />
+                      {t(c.label)}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-gray-500 mt-1">
+              {t('Shown as a colored badge next to this name on the timeline.')}
+            </p>
+          </div>
+
           <div className="flex items-center space-x-2">
             <input
               type="checkbox"
-              id="inactive"
+              id={`${formId}-inactive`}
               checked={formData.inactive}
               onChange={(e) => setFormData({ ...formData, inactive: e.target.checked })}
               className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
               disabled={isFirstCaretaker}
             />
-            <label htmlFor="inactive" className="form-label mb-0">
+            <label htmlFor={`${formId}-inactive`} className="form-label mb-0">
               {t('Mark as inactive')}
             </label>
           </div>
@@ -456,8 +627,9 @@ export default function CaretakerForm({
             </p>
           )}
           <div>
-            <label className="form-label">{t('Security PIN')}</label>
+            <label htmlFor={`${formId}-securityPin`} className="form-label">{t('Security PIN')}</label>
             <Input
+              id={`${formId}-securityPin`}
               type="password"
               value={formData.securityPin}
               onChange={(e) => {
@@ -467,17 +639,18 @@ export default function CaretakerForm({
                 }
               }}
               className="w-full"
-              placeholder={t("Enter 4-10 digit PIN")}
+              placeholder={isEditing ? t("Leave blank to keep current PIN") : t("Enter 4-10 digit PIN")}
               minLength={4}
               maxLength={10}
               pattern="\d*"
-              required
+              required={!isEditing}
             />
-            <p className="text-xs text-gray-500 mt-1">{t('PIN must be between 4 and 10 digits')}</p>
+            <p className="text-xs text-gray-500 mt-1">{isEditing ? t('Leave blank to keep the current PIN, or enter a new 4-10 digit PIN') : t('PIN must be between 4 and 10 digits')}</p>
           </div>
           <div>
-            <label className="form-label">{t('Confirm PIN')}</label>
+            <label htmlFor={`${formId}-confirmPin`} className="form-label">{t('Confirm PIN')}</label>
             <Input
+              id={`${formId}-confirmPin`}
               type="password"
               value={confirmPin}
               onChange={(e) => {
@@ -491,10 +664,10 @@ export default function CaretakerForm({
               minLength={4}
               maxLength={10}
               pattern="\d*"
-              required
+              required={!isEditing}
             />
           </div>
-          
+
           {error && (
             <div className="text-sm text-red-500 font-medium">{error}</div>
           )}

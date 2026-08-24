@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams } from 'next/navigation';
+import { Newsreader } from 'next/font/google';
 import { DeploymentProvider } from '@/app/context/deployment';
 import { LocalizationProvider } from '@/src/context/localization';
 import { FamilyProvider } from '@/src/context/family';
@@ -8,6 +9,13 @@ import { BabyProvider } from '@/app/context/baby';
 
 import { ThemeProvider } from '@/src/context/theme';
 import { ToastProvider } from '@/src/components/ui/toast';
+import { PwaServiceWorker } from '@/src/components/PwaServiceWorker';
+
+const newsreader = Newsreader({
+  subsets: ['latin'],
+  style: ['normal', 'italic'],
+  variable: '--font-newsreader',
+});
 
 export default function NurseryLayout({
   children,
@@ -17,7 +25,9 @@ export default function NurseryLayout({
   const params = useParams();
   const slug = (params?.slug as string) || '';
 
-  const handleLogout = async () => {
+  // `reason` becomes a short `src` query param on the destination so unexpected
+  // bounces to the homepage can be diagnosed from the resulting URL (issue #209)
+  const handleLogout = async (reason: string = 'logout-user') => {
     const token = localStorage.getItem('authToken');
 
     try {
@@ -45,18 +55,19 @@ export default function NurseryLayout({
       const target = `/${slug}/nursery-mode`;
       window.location.href = `/${slug}?redirect=${encodeURIComponent(target)}`;
     } else {
-      window.location.href = '/';
+      window.location.href = `/?src=${reason}`;
     }
   };
 
   return (
-    <div style={{ background: '#0a0a1a', minHeight: '100vh' }}>
+    <div className={newsreader.variable} style={{ background: '#0a0a1a', minHeight: '100vh' }}>
       <DeploymentProvider>
         <LocalizationProvider>
           <FamilyProvider onLogout={handleLogout}>
             <BabyProvider>
               <ThemeProvider>
                 <ToastProvider>
+                  <PwaServiceWorker />
                   {children}
                 </ToastProvider>
               </ThemeProvider>

@@ -177,7 +177,7 @@ export function computeDayStats(
             stats.breastMilkBottleTotal += converted;
           } else if (bottleType === 'Formula') {
             stats.formulaBottleTotal += converted;
-          } else if (bottleType === 'Formula\\Breast') {
+          } else if (bottleType === 'Formula/Breast') {
             const bmConverted = convertVolume((activity as any).breastMilkAmount || 0, entryUnit, preferredUnit);
             stats.breastMilkBottleTotal += bmConverted;
             stats.formulaBottleTotal += Math.max(0, converted - bmConverted);

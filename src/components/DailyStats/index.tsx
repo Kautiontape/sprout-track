@@ -233,7 +233,7 @@ export const DailyStats: React.FC<DailyStatsProps> = ({ activities, date, isLoad
               breastMilkAmounts[unit] = (breastMilkAmounts[unit] || 0) + activity.amount;
             } else if (bottleType === 'Formula') {
               formulaAmounts[unit] = (formulaAmounts[unit] || 0) + activity.amount;
-            } else if (bottleType === 'Formula\\Breast') {
+            } else if (bottleType === 'Formula/Breast') {
               const bm = (activity as any).breastMilkAmount || 0;
               breastMilkAmounts[unit] = (breastMilkAmounts[unit] || 0) + bm;
               formulaAmounts[unit] = (formulaAmounts[unit] || 0) + Math.max(0, activity.amount - bm);

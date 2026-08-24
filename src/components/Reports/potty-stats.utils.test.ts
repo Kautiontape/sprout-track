@@ -1,5 +1,5 @@
 // src/components/Reports/potty-stats.utils.test.ts
-import { test } from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { computePottyStats } from './potty-stats.utils';
 

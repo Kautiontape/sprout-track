@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { DEFAULT_FLIP_CONFIG, mergeFlipConfig, FLIP_RULES, FLIP_FAQ } from './protocol';
 

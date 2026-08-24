@@ -909,6 +909,8 @@
   "lb": "lb",
   "lbs": "lbs",
   "Leave blank for an indefinite recurrence": "Leer lassen für unbegrenzte Wiederholung",
+  "Leave blank to keep current PIN": "",
+  "Leave blank to keep the current PIN, or enter a new 4-10 digit PIN": "",
   "Left": "Links",
   "Left Amount": "Menge links",
   "Left Avg": "Durchschn. links",

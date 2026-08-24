@@ -909,6 +909,8 @@
   "lb": "lb",
   "lbs": "lbs",
   "Leave blank for an indefinite recurrence": "Lăsați gol pentru o recurență nedefinită",
+  "Leave blank to keep current PIN": "",
+  "Leave blank to keep the current PIN, or enter a new 4-10 digit PIN": "",
   "Left": "Stânga",
   "Left Amount": "Cantitate Stânga",
   "Left Avg": "Medie Stânga",

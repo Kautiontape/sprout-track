@@ -911,6 +911,8 @@
   "lb": "lb",
   "lbs": "lbs",
   "Leave blank for an indefinite recurrence": "Deixe em branco para uma recorrência indefinida",
+  "Leave blank to keep current PIN": "",
+  "Leave blank to keep the current PIN, or enter a new 4-10 digit PIN": "",
   "Left": "Esquerdo",
   "Left Amount": "Quantidade Esquerdo",
   "Left Avg": "Média Esquerdo",

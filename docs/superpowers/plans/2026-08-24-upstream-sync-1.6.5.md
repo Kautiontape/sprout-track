@@ -1493,20 +1493,31 @@ echo "baseline snapshot kept at $SNAP/pre-cutover.db"
 
 Write all four numbers down and keep that snapshot until Step 6 confirms the deploy.
 
-**Also capture `hueConfig` — the deploy destroys it.** Upstream's WHO migration rebuilds
-`Settings` and discards this fork's columns; migration `20260801000000` re-adds the
-columns but cannot recover their values, because the data is gone before it runs.
-`dailyStatsAvgDays` and `pottyLocationSettings` are at defaults and lose nothing, but
-`hueConfig` holds the configured Hue buttons for the day-night flip feature.
+**Also capture all three fork `Settings` values — the deploy destroys them.** Upstream's
+WHO migration rebuilds `Settings` and discards this fork's columns; migration
+`20260801000000` re-adds the columns but **cannot recover their values**, because the
+data is gone before it runs. The columns come back at their schema defaults.
+
+Capture all three, not just `hueConfig`. As of the 2026-08-24 rehearsal
+`dailyStatsAvgDays` was `5` and `pottyLocationSettings` was `NULL` — both already at
+their defaults, so they would survive by coincidence. **Do not rely on that.** If either
+has been changed by cutover time, defaults would silently overwrite it, and a
+before/after comparison of the value would still look identical.
 
 ```bash
-sqlite3 "$SNAP/pre-cutover.db" "SELECT hueConfig FROM Settings WHERE hueConfig IS NOT NULL;" > "$SNAP/hueConfig.saved"
+sqlite3 -noheader "$SNAP/pre-cutover.db" \
+  "SELECT id || '|' || COALESCE(dailyStatsAvgDays,'') || '|' || COALESCE(pottyLocationSettings,'') FROM Settings;" \
+  > "$SNAP/forkSettings.saved"
+cat "$SNAP/forkSettings.saved"
+
+sqlite3 -noheader "$SNAP/pre-cutover.db" "SELECT hueConfig FROM Settings WHERE hueConfig IS NOT NULL;" > "$SNAP/hueConfig.saved"
 printf '%s' "$(cat "$SNAP/hueConfig.saved")" > "$SNAP/hueConfig.trimmed"
-wc -c "$SNAP/hueConfig.trimmed"
+md5sum "$SNAP/hueConfig.trimmed"
 ```
 
-Expected: a non-empty JSON blob beginning `{"buttons":[…`. Keep this file — Step 6b
-writes it back.
+Expected: a `<settingsId>|<avgDays>|<pottyLocationJson>` line, and a non-empty JSON blob
+beginning `{"buttons":[…`. **Record the md5** — Step 6b checks the restored value against
+it. Keep both files.
 As of 2026-08-24 the baseline was potty 24, feed 701, diaper 759, sleep 327; expect
 these to have grown by cutover time, since the family is actively logging.
 
@@ -1595,28 +1606,52 @@ ssh ktn "docker run --rm -v sprout-track_db-data:/data -v <backup-path>:/backup:
 
 Then revert the merge on `main` and re-deploy before investigating.
 
-- [ ] **Step 6b: Restore `hueConfig` on the live database**
+- [ ] **Step 6b: Restore the three fork `Settings` values on the live database**
 
-The columns are back (migration `20260801000000`) but `hueConfig` is now empty. Write
-the captured value back. **It must be stored as TEXT** — `readfile()` alone yields a
-BLOB, and Prisma then rejects the field with a type error rather than a missing-column
-error, which looks like a different bug entirely. The `CAST` and the newline trim both
-matter; this was verified the hard way during the rehearsal.
+The columns are back (migration `20260801000000`) but hold schema defaults. Write the
+Step 2 captures back.
+
+**`hueConfig` must be stored as TEXT.** `readfile()` alone yields a BLOB, and Prisma then
+rejects the field with a *type* error rather than a missing-column error — which reads
+like a completely different bug. The `CAST` and the newline trim both matter; this was
+found the hard way during the rehearsal, where the first restore attempt corrupted the
+value while reporting a plausible-looking character count.
+
+Scope the `UPDATE` by settings id from the captured line, so a future multi-family
+database cannot have one family's config written across all rows.
 
 ```bash
+SETTINGS_ID=$(cut -d'|' -f1 "$SNAP/forkSettings.saved")
+AVG_DAYS=$(cut -d'|' -f2 "$SNAP/forkSettings.saved")
+POTTY_LOC=$(cut -d'|' -f3 "$SNAP/forkSettings.saved")
+
 ssh ktn "mkdir -p /tmp/huerestore"
 scp -q "$SNAP/hueConfig.trimmed" ktn:/tmp/huerestore/hue.txt
 ssh ktn "docker run --rm -v sprout-track_db-data:/data -v /tmp/huerestore:/in:ro \
   keinos/sqlite3 sqlite3 /data/baby-tracker.db \
-  \"UPDATE Settings SET hueConfig = CAST(readfile('/in/hue.txt') AS TEXT);\""
-ssh ktn "docker run --rm -v sprout-track_db-data:/data:ro keinos/sqlite3 sqlite3 /data/baby-tracker.db \
-  \"SELECT LENGTH(hueConfig) || ' chars, typeof=' || typeof(hueConfig) FROM Settings;\""
+  \"UPDATE Settings SET hueConfig = CAST(readfile('/in/hue.txt') AS TEXT) WHERE id = '$SETTINGS_ID';\""
+
+# Only if they were non-default at capture time; skip a blank POTTY_LOC.
+[ -n "$AVG_DAYS" ] && ssh ktn "docker run --rm -v sprout-track_db-data:/data keinos/sqlite3 \
+  sqlite3 /data/baby-tracker.db \"UPDATE Settings SET dailyStatsAvgDays = $AVG_DAYS WHERE id = '$SETTINGS_ID';\""
+[ -n "$POTTY_LOC" ] && ssh ktn "docker run --rm -v sprout-track_db-data:/data keinos/sqlite3 \
+  sqlite3 /data/baby-tracker.db \"UPDATE Settings SET pottyLocationSettings = '$POTTY_LOC' WHERE id = '$SETTINGS_ID';\""
 ssh ktn "rm -rf /tmp/huerestore"
 ```
 
-Expected: the character count matches what Step 2 captured, and `typeof=text`. If the
-sqlite3 image is unavailable on ktn, do the same `UPDATE` through the app container
-instead — any image with sqlite3 and the volume mounted will do.
+Verify the restore is byte-identical rather than merely the right length:
+
+```bash
+ssh ktn "docker run --rm -v sprout-track_db-data:/data:ro keinos/sqlite3 sqlite3 /data/baby-tracker.db \
+  \"SELECT hueConfig FROM Settings WHERE id = '$SETTINGS_ID';\"" | tr -d '\n' > "$SNAP/hue.check"
+md5sum "$SNAP/hue.check" "$SNAP/hueConfig.trimmed"
+ssh ktn "docker run --rm -v sprout-track_db-data:/data:ro keinos/sqlite3 sqlite3 /data/baby-tracker.db \
+  \"SELECT typeof(hueConfig), dailyStatsAvgDays, COALESCE(pottyLocationSettings,'NULL') FROM Settings WHERE id = '$SETTINGS_ID';\""
+```
+
+Expected: **the two md5 sums match**, `typeof` is `text`, and the other two values equal
+what Step 2 captured. If the sqlite3 image is unavailable on ktn, run the same
+statements through any image with sqlite3 and the volume mounted.
 
 Then confirm the day-night flip Hue buttons render in the app before moving on.
 

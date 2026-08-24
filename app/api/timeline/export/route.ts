@@ -37,6 +37,8 @@ function detectActivityType(activity: any): string {
   if ('foodId' in activity) return 'food'; // food logs (issue #203)
   if ('duration' in activity && 'type' in activity && ('location' in activity || 'quality' in activity)) return 'sleep';
   if ('amount' in activity && 'type' in activity && ('side' in activity || 'food' in activity || 'feedDuration' in activity || 'bottleType' in activity)) return 'feed';
+  // Bag logs carry `bagCount`, which no other model has.
+  if ('bagCount' in activity) return 'milkbag';
   // Potty must be checked before diaper: a PottyLog has `type` but none of the
   // fields the other discriminators key on, so it needs its own field (pottyLocation).
   if ('pottyLocation' in activity) return 'potty';
@@ -60,6 +62,7 @@ function getActivityTypeName(type: string, translations: Record<string, string>)
     'feed': 'Feed',
     'diaper': 'Diaper',
     'potty': 'Potty',
+    'milkbag': 'Frozen Milk',
     'note': 'Note',
     'bath': 'Bath',
     'pump': 'Pump',
@@ -100,6 +103,8 @@ function getSubType(activity: any, type: string, translations: Record<string, st
       if (activity.type === 'DIRTY') return t('Poop', translations);
       if (activity.type === 'BOTH') return t('Both', translations);
       return activity.type || '';
+    case 'milkbag':
+      return activity.bagCount > 0 ? t('Froze', translations) : t('Used', translations);
     case 'pump':
       return activity.pumpAction ? t(activity.pumpAction, translations) : '';
     case 'milestone':
@@ -219,6 +224,11 @@ function getDetails(activity: any, type: string, translations: Record<string, st
       break;
     case 'potty':
       if (activity.pottyLocation) parts.push(`${t('Where', translations)}: ${t(activity.pottyLocation, translations)}`);
+      break;
+    case 'milkbag':
+      parts.push(`${t('Bags', translations)}: ${Math.abs(activity.bagCount)}`);
+      parts.push(`${t('Per Bag', translations)}: ${activity.amountPerBag}`);
+      if (activity.reason) parts.push(`${t('Reason', translations)}: ${t(activity.reason, translations)}`);
       break;
     case 'bath':
       if (activity.soapUsed) parts.push(t('Soap', translations));
@@ -390,7 +400,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
     const shouldFetch = (type: string) => !filter || filter === type;
     const emptyPromise = Promise.resolve([]);
 
-    const [sleepLogs, feedLogs, diaperLogs, pottyLogs, noteLogs, bathLogs, pumpLogs, playLogs, milestoneLogs, measurementLogs, medicineLogs, breastMilkAdjustments, vaccineLogs, foodLogs] = await Promise.all([
+    const [sleepLogs, feedLogs, diaperLogs, pottyLogs, breastMilkBagLogs, noteLogs, bathLogs, pumpLogs, playLogs, milestoneLogs, measurementLogs, medicineLogs, breastMilkAdjustments, vaccineLogs, foodLogs] = await Promise.all([
       shouldFetch('sleep') ? prisma.sleepLog.findMany({
         where: {
           babyId,
@@ -423,6 +433,14 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
         orderBy: { time: 'desc' },
       }) : emptyPromise,
       shouldFetch('potty') ? prisma.pottyLog.findMany({
+        where: {
+          babyId, familyId,
+          ...(startDateUTC && endDateUTC ? { time: { gte: startDateUTC, lte: endDateUTC } } : {}),
+        },
+        include: { caretaker: true },
+        orderBy: { time: 'desc' },
+      }) : emptyPromise,
+      shouldFetch('milkbag') ? prisma.breastMilkBagLog.findMany({
         where: {
           babyId, familyId,
           ...(startDateUTC && endDateUTC ? { time: { gte: startDateUTC, lte: endDateUTC } } : {}),
@@ -532,6 +550,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
       ...feedLogs.map(formatLog),
       ...diaperLogs.map(formatLog),
       ...pottyLogs.map(formatLog),
+      ...breastMilkBagLogs.map(formatLog),
       ...noteLogs.map(formatLog),
       ...bathLogs.map(formatLog),
       ...pumpLogs.map(formatLog),

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '../db';
-import { ApiResponse, SleepLogResponse, FeedLogResponse, DiaperLogResponse, PottyLogResponse, NoteResponse, BathLogResponse, PumpLogResponse, PlayLogResponse, MilestoneResponse, MeasurementResponse, MedicineLogResponse, MedicineResponse, BreastMilkAdjustmentResponse, VaccineLogResponse, FoodLogResponse, PhotoLogResponse, TimelinePhotoInfo } from '../types';
+import { ApiResponse, SleepLogResponse, FeedLogResponse, DiaperLogResponse, PottyLogResponse, NoteResponse, BathLogResponse, PumpLogResponse, PlayLogResponse, MilestoneResponse, MeasurementResponse, MedicineLogResponse, MedicineResponse, BreastMilkAdjustmentResponse, BreastMilkBagLogResponse, VaccineLogResponse, FoodLogResponse, PhotoLogResponse, TimelinePhotoInfo } from '../types';
 import { withAuthContext, AuthResult } from '../utils/auth';
 import { toUTC, formatForResponse } from '../utils/timezone';
 import { buildLinkTargets, groupPhotoLinks, photoLogHasLivePhotos } from './timeline-photo-links';
@@ -77,7 +77,7 @@ function caretakerBadgeFields(caretaker: { name?: string | null; loginId?: strin
 
 // Extended activity types with caretaker information
 type ActivityTypeWithCaretaker = (
-  SleepLogResponse | FeedLogResponse | DiaperLogResponse | PottyLogResponse | NoteResponse | BathLogResponse | PumpLogResponse | PlayLogResponse | MilestoneResponse | MeasurementResponse | MedicineLogResponse | BreastMilkAdjustmentResponse | VaccineLogResponse | FoodLogResponse
+  SleepLogResponse | FeedLogResponse | DiaperLogResponse | PottyLogResponse | BreastMilkBagLogResponse | NoteResponse | BathLogResponse | PumpLogResponse | PlayLogResponse | MilestoneResponse | MeasurementResponse | MedicineLogResponse | BreastMilkAdjustmentResponse | VaccineLogResponse | FoodLogResponse
   | (Omit<PhotoLogResponse, 'photos'> & { photoLogId: string; photos: TimelinePhotoInfo[] })
 ) & {
   caretakerId?: string | null;
@@ -224,7 +224,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
 
     // Get recent activities from each type with caretaker information
     const emptyPromise = Promise.resolve([]);
-    const [sleepLogs, feedLogs, diaperLogs, pottyLogs, noteLogs, bathLogs, pumpLogs, playLogs, milestoneLogs, measurementLogs, medicineLogs, breastMilkAdjustments, vaccineLogs, foodLogs, photoLogs] = await Promise.all([
+    const [sleepLogs, feedLogs, diaperLogs, pottyLogs, breastMilkBagLogs, noteLogs, bathLogs, pumpLogs, playLogs, milestoneLogs, measurementLogs, medicineLogs, breastMilkAdjustments, vaccineLogs, foodLogs, photoLogs] = await Promise.all([
       shouldFetch('sleep') ? prisma.sleepLog.findMany({
         where: {
           babyId,
@@ -291,6 +291,22 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
         orderBy: { time: 'desc' }
       }) : emptyPromise,
       shouldFetch('potty') ? prisma.pottyLog.findMany({
+        where: {
+          babyId,
+          ...(startDateUTC && endDateUTC ? {
+            time: {
+              gte: startDateUTC,
+              lte: endDateUTC
+            }
+          } : {}),
+          familyId, // Filter by the verified family ID
+        },
+        include: {
+          caretaker: true
+        },
+        orderBy: { time: 'desc' }
+      }) : emptyPromise,
+      shouldFetch('milkbag') ? prisma.breastMilkBagLog.findMany({
         where: {
           babyId,
           ...(startDateUTC && endDateUTC ? {
@@ -595,6 +611,21 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
         };
       });
 
+    const formattedBreastMilkBagLogs: ActivityTypeWithCaretaker[] = breastMilkBagLogs
+      .map(log => {
+        const { caretaker, ...logWithoutCaretaker } = log;
+
+        return {
+          ...logWithoutCaretaker,
+          time: formatForResponse(log.time) || '',
+          createdAt: formatForResponse(log.createdAt) || '',
+          updatedAt: formatForResponse(log.updatedAt) || '',
+          deletedAt: formatForResponse(log.deletedAt),
+          caretakerId: log.caretakerId,
+          caretakerName: log.caretaker ? log.caretaker.name : undefined,
+        };
+      });
+
     const formattedNoteLogs: ActivityTypeWithCaretaker[] = noteLogs
       .map(log => {
         // Create a new object without the caretaker property
@@ -841,6 +872,7 @@ async function handleGet(req: NextRequest, authContext: AuthResult) {
       ...formattedFeedLogs,
       ...formattedDiaperLogs,
       ...formattedPottyLogs,
+      ...formattedBreastMilkBagLogs,
       ...formattedNoteLogs,
       ...formattedBathLogs,
       ...formattedPumpLogs,

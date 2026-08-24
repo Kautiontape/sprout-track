@@ -19,9 +19,9 @@ const POTTY_TYPES = ['WET', 'DIRTY', 'BOTH'] as const;
 // instead of being silently accepted and dropped.
 const TYPE_FIELDS: Record<ActivityType, readonly string[]> = {
   feed: ['type', 'time', 'caretakerName', 'feedType', 'amount', 'unitAbbr', 'side', 'food', 'notes', 'bottleType', 'action', 'duration'],
-  diaper: ['type', 'time', 'caretakerName', 'diaperType', 'condition', 'color', 'blowout', 'creamApplied'],
+  diaper: ['type', 'time', 'caretakerName', 'diaperType', 'condition', 'color', 'blowout', 'creamApplied', 'notes'],
   potty: ['type', 'time', 'caretakerName', 'pottyType', 'pottyLocation', 'notes'],
-  sleep: ['type', 'time', 'caretakerName', 'sleepType', 'action', 'duration', 'location', 'quality'],
+  sleep: ['type', 'time', 'caretakerName', 'sleepType', 'action', 'duration', 'location', 'quality', 'notes'],
   note: ['type', 'time', 'caretakerName', 'content', 'category'],
   pump: ['type', 'time', 'caretakerName', 'action', 'duration', 'leftAmount', 'rightAmount', 'totalAmount', 'unitAbbr', 'pumpAction'],
   play: ['type', 'time', 'caretakerName', 'playType', 'duration', 'notes', 'activities'],
@@ -189,7 +189,7 @@ async function handleGet(req: NextRequest, ctx: ApiKeyContext, routeContext: any
           activityType: 'diaper',
           id: r.id,
           time: r.time.toISOString(),
-          details: { type: r.type, condition: r.condition, color: r.color, blowout: r.blowout, creamApplied: r.creamApplied },
+          details: { type: r.type, condition: r.condition, color: r.color, blowout: r.blowout, creamApplied: r.creamApplied, notes: r.notes },
           caretakerName: r.caretaker?.name || null,
         }));
       })
@@ -227,7 +227,7 @@ async function handleGet(req: NextRequest, ctx: ApiKeyContext, routeContext: any
           activityType: 'sleep',
           id: r.id,
           time: r.startTime.toISOString(),
-          details: { type: r.type, startTime: r.startTime.toISOString(), endTime: r.endTime?.toISOString() || null, duration: r.duration, location: r.location, quality: r.quality, isActive: !r.endTime },
+          details: { type: r.type, startTime: r.startTime.toISOString(), endTime: r.endTime?.toISOString() || null, duration: r.duration, location: r.location, quality: r.quality, notes: r.notes, isActive: !r.endTime },
           caretakerName: r.caretaker?.name || null,
         }));
       })
@@ -556,25 +556,27 @@ async function handlePost(req: NextRequest, ctx: ApiKeyContext, routeContext: an
       }
 
       case 'diaper': {
-        const { diaperType, condition, color, blowout, creamApplied } = body;
-        if (!diaperType || !['WET', 'DIRTY', 'BOTH'].includes(diaperType)) {
-          return hookError('INVALID_DIAPER_TYPE', 'diaperType must be WET, DIRTY, or BOTH', 400, rl.headers);
+        const { diaperType, condition, color, blowout, creamApplied, notes } = body;
+        if (!diaperType || !['WET', 'DIRTY', 'BOTH', 'DRY'].includes(diaperType)) {
+          return hookError('INVALID_DIAPER_TYPE', 'diaperType must be WET, DIRTY, BOTH, or DRY', 400, rl.headers);
         }
         const blowoutCheck = requireBooleanIfPresent(blowout, 'blowout');
         if (blowoutCheck.error) return hookError('INVALID_FIELD', blowoutCheck.error, 400, rl.headers);
         const creamCheck = requireBooleanIfPresent(creamApplied, 'creamApplied');
         if (creamCheck.error) return hookError('INVALID_FIELD', creamCheck.error, 400, rl.headers);
+        const diaperNotesCheck = requireStringIfPresent(notes, 'notes');
+        if (diaperNotesCheck.error) return hookError('INVALID_NOTES', diaperNotesCheck.error, 400, rl.headers);
         const conditionResult = normalizeRequiredEnumIfPresent(condition, 'condition', DIAPER_CONDITIONS);
         if (conditionResult.error) return hookError('INVALID_CONDITION', conditionResult.error, 400, rl.headers);
         const colorResult = normalizeRequiredEnumIfPresent(color, 'color', DIAPER_COLORS);
         if (colorResult.error) return hookError('INVALID_COLOR', colorResult.error, 400, rl.headers);
 
         result = await prisma.diaperLog.create({
-          data: { time, type: diaperType, condition: conditionResult.value, color: colorResult.value, blowout: blowout === true, creamApplied: creamApplied === true, babyId, caretakerId, familyId },
+          data: { time, type: diaperType, condition: conditionResult.value, color: colorResult.value, blowout: blowout === true, creamApplied: creamApplied === true, notes: notes || null, babyId, caretakerId, familyId },
         });
         notifyActivityCreated(babyId, 'diaper', { caretakerId }, { type: diaperType }).catch(console.error);
         resetTimerNotificationState(babyId, 'diaper').catch(console.error);
-        return hookSuccess({ activityType: 'diaper', id: result.id, time: result.time.toISOString(), details: { type: diaperType, condition: conditionResult.value, color: colorResult.value, blowout: result.blowout, creamApplied: result.creamApplied } }, { familyId, babyId }, rl.headers);
+        return hookSuccess({ activityType: 'diaper', id: result.id, time: result.time.toISOString(), details: { type: diaperType, condition: conditionResult.value, color: colorResult.value, blowout: result.blowout, creamApplied: result.creamApplied, notes: result.notes } }, { familyId, babyId }, rl.headers);
       }
 
       case 'potty': {
@@ -601,7 +603,7 @@ async function handlePost(req: NextRequest, ctx: ApiKeyContext, routeContext: an
       }
 
       case 'sleep': {
-        const { sleepType, action, duration: sleepDuration, location } = body;
+        const { sleepType, action, duration: sleepDuration, location, notes } = body;
         let { quality } = body;
         if (!action || !['start', 'end', 'log'].includes(action)) {
           return hookError('INVALID_ACTION', 'action must be start, end, or log', 400, rl.headers);
@@ -615,13 +617,15 @@ async function handlePost(req: NextRequest, ctx: ApiKeyContext, routeContext: an
         const qualityResult = normalizeRequiredEnumIfPresent(quality, 'quality', SLEEP_QUALITIES);
         if (qualityResult.error) return hookError('INVALID_QUALITY', qualityResult.error, 400, rl.headers);
         quality = qualityResult.value;
+        const sleepNotesCheck = requireStringIfPresent(notes, 'notes');
+        if (sleepNotesCheck.error) return hookError('INVALID_NOTES', sleepNotesCheck.error, 400, rl.headers);
 
         if (action === 'start') {
           result = await prisma.sleepLog.create({
-            data: { startTime: time, type: sleepType, location: location || null, quality: quality || null, babyId, caretakerId, familyId },
+            data: { startTime: time, type: sleepType, location: location || null, quality: quality || null, notes: notes || null, babyId, caretakerId, familyId },
           });
           notifyActivityCreated(babyId, 'sleep', { caretakerId }, { type: sleepType }).catch(console.error);
-          return hookSuccess({ activityType: 'sleep', id: result.id, time: result.startTime.toISOString(), details: { type: sleepType, action: 'start', isActive: true } }, { familyId, babyId }, rl.headers);
+          return hookSuccess({ activityType: 'sleep', id: result.id, time: result.startTime.toISOString(), details: { type: sleepType, action: 'start', isActive: true, notes: result.notes } }, { familyId, babyId }, rl.headers);
         }
 
         if (action === 'end') {
@@ -636,10 +640,10 @@ async function handlePost(req: NextRequest, ctx: ApiKeyContext, routeContext: an
           const dur = Math.round((time.getTime() - activeSleep.startTime.getTime()) / 60000);
           result = await prisma.sleepLog.update({
             where: { id: activeSleep.id },
-            data: { endTime: time, duration: dur, quality: quality || activeSleep.quality, ...(sleepType && { type: sleepType }) },
+            data: { endTime: time, duration: dur, quality: quality || activeSleep.quality, notes: notes !== undefined ? (notes || null) : activeSleep.notes, ...(sleepType && { type: sleepType }) },
           });
           notifyActivityCreated(babyId, 'wake', { caretakerId }, { duration: dur }).catch(console.error);
-          return hookSuccess({ activityType: 'sleep', id: result.id, time: result.startTime.toISOString(), details: { type: result.type, action: 'end', duration: dur, isActive: false } }, { familyId, babyId }, rl.headers);
+          return hookSuccess({ activityType: 'sleep', id: result.id, time: result.startTime.toISOString(), details: { type: result.type, action: 'end', duration: dur, isActive: false, notes: result.notes } }, { familyId, babyId }, rl.headers);
         }
 
         // action === 'log'
@@ -649,10 +653,10 @@ async function handlePost(req: NextRequest, ctx: ApiKeyContext, routeContext: an
         const endTime = new Date(time.getTime() + sleepDuration * 60000);
         const startTime = time;
         result = await prisma.sleepLog.create({
-          data: { startTime, endTime, duration: sleepDuration, type: sleepType, location: location || null, quality: quality || null, babyId, caretakerId, familyId },
+          data: { startTime, endTime, duration: sleepDuration, type: sleepType, location: location || null, quality: quality || null, notes: notes || null, babyId, caretakerId, familyId },
         });
         notifyActivityCreated(babyId, 'sleep', { caretakerId }, { type: sleepType }).catch(console.error);
-        return hookSuccess({ activityType: 'sleep', id: result.id, time: result.startTime.toISOString(), details: { type: sleepType, action: 'log', duration: sleepDuration, isActive: false } }, { familyId, babyId }, rl.headers);
+        return hookSuccess({ activityType: 'sleep', id: result.id, time: result.startTime.toISOString(), details: { type: sleepType, action: 'log', duration: sleepDuration, isActive: false, notes: result.notes } }, { familyId, babyId }, rl.headers);
       }
 
       case 'note': {

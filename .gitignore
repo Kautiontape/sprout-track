@@ -60,3 +60,5 @@ prisma/sync-test.prisma
 
 bugfix-docs/
 temp-development-docs/
+
+test-results/

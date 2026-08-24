@@ -26,6 +26,7 @@ import { computePottyStats } from './potty-stats.utils';
 import FoodStatsSection from './FoodStatsSection';
 import { useLocalization } from '@/src/context/localization';
 import { formatDateShort } from '@/src/utils/dateFormat';
+import { isDirtyDiaper, isWetDiaper } from '@/src/utils/diaperStats';
 
 /**
  * StatsTab Component
@@ -476,12 +477,10 @@ const StatsTab: React.FC<StatsTabProps> = ({
         totalDiaperChanges++;
         const diaperActivity = activity as any;
 
-        if (diaperActivity.type === 'WET') {
+        if (isWetDiaper(diaperActivity.type)) {
           wetCount++;
-        } else if (diaperActivity.type === 'DIRTY') {
-          poopCount++;
-        } else if (diaperActivity.type === 'BOTH') {
-          wetCount++;
+        }
+        if (isDirtyDiaper(diaperActivity.type)) {
           poopCount++;
         }
       }

@@ -1,6 +1,7 @@
 import { ActivityType } from '../types';
 import { convertVolume } from '@/src/utils/unit-conversion';
 import { groupBreastFeedSessions, BreastFeedLike } from '@/src/utils/feedSessionUtils';
+import { isWetDiaper, isDirtyDiaper } from '@/src/utils/diaperStats';
 
 export interface DayStatsOptions {
   preferredUnit: string;
@@ -206,15 +207,11 @@ export function computeDayStats(
       const time = new Date(activity.time);
       if (time >= startOfDay && time <= endBound) {
         stats.hasAnyActivity = true;
-        // Count wet and dirty diapers exclusively
-        if (activity.type === 'WET') {
+        // Count wet and dirty diapers. BOTH counts as both; DRY as neither.
+        if (isWetDiaper(activity.type)) {
           stats.wetCount++;
-        } else if (activity.type === 'DIRTY') {
-          stats.dirtyCount++;
-          stats.poopCount++;
-        } else if (activity.type === 'BOTH') {
-          // BOTH counts as both wet and dirty
-          stats.wetCount++;
+        }
+        if (isDirtyDiaper(activity.type)) {
           stats.dirtyCount++;
           stats.poopCount++;
         }

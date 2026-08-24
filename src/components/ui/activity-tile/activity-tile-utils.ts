@@ -1,6 +1,7 @@
 import { ActivityType } from './activity-tile.types';
 import { BathLogResponse, PumpLogResponse, PlayLogResponse, MeasurementResponse, MilestoneResponse, MedicineLogResponse, VaccineLogResponse } from '@/app/api/types';
 import { useTimezone } from '@/app/context/timezone';
+import { isDirtyDiaper } from '@/src/utils/diaperStats';
 
 /**
  * Gets the activity time from different activity types
@@ -30,6 +31,8 @@ export const getActivityVariant = (activity: ActivityType): 'sleep' | 'feed' | '
     const playTypes = ['TUMMY_TIME', 'INDOOR_PLAY', 'OUTDOOR_PLAY', 'WALK', 'CUSTOM'];
     if (playTypes.includes((activity as any).type)) return 'play';
   }
+  // Food before feed: FoodLog also has optional amount (#203 / #247)
+  if ('foodId' in activity || 'foods' in activity || 'foodItems' in activity) return 'food';
   if ('type' in activity) {
     if ('duration' in activity && 'quality' in activity) return 'sleep';
     if ('duration' in activity && 'location' in activity && !('amount' in activity) && !('condition' in activity)) return 'sleep';
@@ -40,7 +43,6 @@ export const getActivityVariant = (activity: ActivityType): 'sleep' | 'feed' | '
   }
   if ('doseAmount' in activity && 'medicineId' in activity) return 'medicine';
   if ('vaccineName' in activity) return 'vaccine';
-  if ('foodId' in activity) return 'food';
   if ('title' in activity && 'category' in activity) return 'milestone';
   if ('leftAmount' in activity || 'rightAmount' in activity) return 'pump';
   if ('content' in activity) return 'note';
@@ -87,10 +89,11 @@ export const useActivityDescription = () => {
         
         // Extract just the time part from the end time
         const endTimeOnly = activity.endTime ? formatTime(activity.endTime) : 'ongoing';
-        
+        const notes = (activity as any).notes ? ` - ${(activity as any).notes}` : '';
+
         return {
           type: `${activity.type === 'NAP' ? 'Nap' : 'Night Sleep'}${location ? ` - ${location}` : ''}`,
-          details: `${startTimeFormatted} - ${endTimeOnly}${duration}`
+          details: `${startTimeFormatted} - ${endTimeOnly}${duration}${notes}`
         };
       }
       if ('amount' in activity) {
@@ -140,7 +143,8 @@ export const useActivityDescription = () => {
             case 'WET': return 'Wet';
             case 'DIRTY': return 'Dirty';
             case 'BOTH': return 'Wet and Dirty';
-            default: return type.split('_').map(word => 
+            case 'DRY': return 'Dry';
+            default: return type.split('_').map(word =>
               word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
             ).join(' ');
           }
@@ -169,7 +173,7 @@ export const useActivityDescription = () => {
         };
         
         let details = '';
-        if (activity.type !== 'WET') {
+        if (isDirtyDiaper(activity.type)) {
           const conditions = [];
           if (activity.condition) conditions.push(formatDiaperCondition(activity.condition));
           if (activity.color) conditions.push(formatDiaperColor(activity.color));
@@ -179,9 +183,10 @@ export const useActivityDescription = () => {
         }
         
         const time = formatDateTime(activity.time);
+        const notes = (activity as any).notes ? ` - ${(activity as any).notes}` : '';
         return {
           type: formatDiaperType(activity.type),
-          details: `${details}${time}`
+          details: `${details}${time}${notes}`
         };
       }
     }

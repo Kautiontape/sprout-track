@@ -24,6 +24,7 @@ import { cardStyles } from '@/src/components/ui/card/card.styles';
 import { useTheme } from '@/src/context/theme';
 import { cn } from '@/src/lib/utils';
 import { formatWeightDisplay } from '@/src/utils/weightUnits';
+import { isDirtyDiaper } from '@/src/utils/diaperStats';
 
 // Import component-specific files
 import './daily-stats.css';
@@ -287,9 +288,9 @@ export const DailyStats: React.FC<DailyStatsProps> = ({ activities, date, isLoad
         // Only count diapers that occurred on the selected day
         if (time >= startOfDay && time <= endOfDay) {
           diaperCount++;
-
-          // Count poops (dirty or wet+dirty)
-          if (activity.type === 'DIRTY' || activity.type === 'BOTH') {
+          
+          // Count poops (dirty or wet+dirty). DRY is excluded.
+          if (isDirtyDiaper(activity.type)) {
             poopCount++;
           }
         }

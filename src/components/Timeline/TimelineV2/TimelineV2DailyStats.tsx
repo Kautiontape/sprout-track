@@ -42,6 +42,7 @@ import { computeDayStats } from './computeDayStats';
 import { formatAmountsByUnit } from '@/src/utils/foodLogUtils';
 import { fetchPhotosEnabled } from '@/src/utils/photoClientApi';
 import { countUniquePhotoIds } from '@/src/utils/photoUtils';
+import { isDirtyDiaper, isWetDiaper } from '@/src/utils/diaperStats';
 
 import './TimelineV2DailyStats.css';
 

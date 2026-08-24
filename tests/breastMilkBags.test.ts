@@ -180,6 +180,15 @@ describe('averageBreastMilkPerDay', () => {
     );
     expect(result).toBe(4);
   });
+
+  it('converts a ML bottle to the target unit before averaging', () => {
+    const result = averageBreastMilkPerDay(
+      [{ amount: 100, unitAbbr: 'ML', bottleType: 'Breast Milk', breastMilkAmount: null }],
+      1,
+      'OZ'
+    );
+    expect(result).toBeCloseTo(3.38, 1);
+  });
 });
 
 describe('projectDaysOfSupply', () => {

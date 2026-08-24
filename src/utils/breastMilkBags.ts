@@ -1,5 +1,5 @@
 import { convertVolume } from './unit-conversion';
-import { isAutoCreatedPumpFeed, BreastMilkFeedInventoryRow } from './breastMilkInventory';
+import { sumBreastMilkConsumed, BreastMilkFeedInventoryRow } from './breastMilkInventory';
 
 /**
  * A single freezer ledger entry. `bagCount` carries the sign: positive is bags
@@ -83,8 +83,7 @@ export function lastAmountPerBag(rows: BreastMilkBagRow[]): number | null {
 
 /**
  * Average volume of breast milk consumed per day over the range, from bottle
- * feeds. Feeds auto-created from a pump session are excluded: that milk never
- * entered the freezer, so it is demand the freezer does not have to meet.
+ * feeds.
  */
 export function averageBreastMilkPerDay(
   feedRows: BreastMilkFeedInventoryRow[],
@@ -92,22 +91,7 @@ export function averageBreastMilkPerDay(
   targetUnit: string
 ): number {
   if (daysInRange <= 0) return 0;
-
-  const total = feedRows.reduce((sum, log) => {
-    if (isAutoCreatedPumpFeed(log)) return sum;
-
-    if (log.bottleType === 'Breast Milk' && log.amount != null) {
-      return sum + convertVolume(log.amount, log.unitAbbr || 'OZ', targetUnit);
-    }
-
-    if (log.bottleType === 'Formula/Breast' && log.breastMilkAmount != null) {
-      return sum + convertVolume(log.breastMilkAmount, log.unitAbbr || 'OZ', targetUnit);
-    }
-
-    return sum;
-  }, 0);
-
-  return round2(total / daysInRange);
+  return round2(sumBreastMilkConsumed(feedRows, targetUnit) / daysInRange);
 }
 
 /**

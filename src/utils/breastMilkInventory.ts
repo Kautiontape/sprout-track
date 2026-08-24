@@ -80,6 +80,33 @@ export function planAutoFeedSync(params: {
   return deleteIds.length > 0 ? { action: 'delete', deleteIds } : { action: 'noop' };
 }
 
+/**
+ * Total breast-milk volume represented by these feed rows, in `targetUnit`.
+ *
+ * Auto-created pump feeds are excluded: that milk was never added to inventory,
+ * so counting it would double-subtract in the balance and overstate demand in
+ * the per-day average. Shared by both callers so the two can never drift on
+ * what "consumed" means.
+ */
+export function sumBreastMilkConsumed(
+  feedLogs: BreastMilkFeedInventoryRow[],
+  targetUnit: string
+): number {
+  return feedLogs.reduce((total, log) => {
+    if (isAutoCreatedPumpFeed(log)) return total;
+
+    if (log.bottleType === 'Breast Milk' && log.amount != null) {
+      return total + convertVolume(log.amount, log.unitAbbr || 'OZ', targetUnit);
+    }
+
+    if (log.bottleType === 'Formula/Breast' && log.breastMilkAmount != null) {
+      return total + convertVolume(log.breastMilkAmount, log.unitAbbr || 'OZ', targetUnit);
+    }
+
+    return total;
+  }, 0);
+}
+
 export function calculateBreastMilkBalance({
   pumpLogs,
   adjustments,
@@ -101,19 +128,7 @@ export function calculateBreastMilkBalance({
     0
   );
 
-  const consumedTotal = feedLogs.reduce((total, log) => {
-    if (isAutoCreatedPumpFeed(log)) return total;
-
-    if (log.bottleType === 'Breast Milk' && log.amount != null) {
-      return total + convertVolume(log.amount, log.unitAbbr || 'OZ', targetUnit);
-    }
-
-    if (log.bottleType === 'Formula/Breast' && log.breastMilkAmount != null) {
-      return total + convertVolume(log.breastMilkAmount, log.unitAbbr || 'OZ', targetUnit);
-    }
-
-    return total;
-  }, 0);
+  const consumedTotal = sumBreastMilkConsumed(feedLogs, targetUnit);
 
   return Math.round((storedTotal + adjustmentTotal - consumedTotal) * 100) / 100;
 }

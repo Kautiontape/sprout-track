@@ -440,7 +440,8 @@ export function ActivityTileGroup({
     medicine: t('Medicine'),
     play: t('Activity'),
     vaccine: t('Vaccines'),
-    food: t('Food')
+    food: t('Food'),
+    milkbag: t('Frozen Milk')
   };
 
   const firstVisibleActivity = activityOrder.find(a => visibleActivities.has(a));

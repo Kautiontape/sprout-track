@@ -234,6 +234,22 @@ Not in scope. Recorded so they are choices rather than oversights.
 - Cherry-picking ideas from upstream's **1.5.0 nursery redesign** into ours.
 - **Upstreaming** potty/EC tracking or day-night flip as contributions to
   Oak-and-Sprout.
+- **Translating the ~394 blank keys in each non-English locale** (~3,900 strings across
+  ten languages). `check-missing-translations.js` adds missing keys with empty values and
+  `t()` falls back to English, so nothing is broken — but CLAUDE.md asks that translations
+  be attempted after keys are added. Roughly 348 of those per locale are this fork's own
+  keys (potty, day-night flip, daily summary); the rest upstream never translated either.
+  Pre-existing debt, not created by this sync. Note that upstream's
+  `tests/translationFiles.test.ts` was reformulated during rung 1.6.5 to accommodate the
+  blanks; clearing this debt would let the original assertion stand.
+- **Fixing the fresh-install migration bug.** Our `20260721201741_add_daily_stats_avg_days`
+  rebuilds `Settings` without upstream's `bathTypeSettings`, `photoQuotaMB`, and
+  `growthChartStandard`, mirroring the bug that
+  `20260801000000_restore_fork_settings_columns` fixes in the other direction. Existing
+  deployments are unaffected — this only bites a database migrated from empty, e.g. a
+  restore into a fresh volume. A single static migration cannot repair both states, and
+  editing the original breaks Prisma's checksum validation on every existing database, so
+  this needs its own design.
 
 ## Out of scope
 

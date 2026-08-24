@@ -228,6 +228,9 @@ Not in scope. Recorded so they are choices rather than oversights.
 
 - Adopting upstream's **dry-diaper flag** as part of the EC model, and the
   simplification it might allow in the never-increment-diaper-counts invariant.
+- **`PUT`/`DELETE` webhook support for potty entries.** Upstream added edit and
+  delete to the hooks API in 1.6.2 for its own activity types. Extending it to
+  potty is new functionality, not restored parity.
 - Cherry-picking ideas from upstream's **1.5.0 nursery redesign** into ours.
 - **Upstreaming** potty/EC tracking or day-night flip as contributions to
   Oak-and-Sprout.

@@ -18,6 +18,8 @@ Read this before Task 1. It is the context you cannot infer from the file tree.
 
 **Where the feature already half-exists.** An ounce-based breast milk inventory ships upstream, wired to the Pump feature: `PumpLog.pumpAction = 'STORED'` adds ounces, `BreastMilkAdjustment` is a manual +/- ounce ledger, bottle feeds subtract, and `GET /api/breast-milk-balance` sums them. **You are not modifying any of that.** The bag ledger is deliberately separate. If you find yourself editing `src/utils/breastMilkInventory.ts` or `app/api/breast-milk-balance/route.ts`, stop — you have gone off-plan.
 
+(One exception, already applied in Task 1 and closed: `breastMilkInventory.ts` now exports a shared `sumBreastMilkConsumed` helper that both ledgers call. Import from it freely; do not otherwise edit it.)
+
 **The family-authorization golden rule.** Never trust a client-sent family id. `authContext.familyId` from the auth middleware is the only source of truth. On read/update/delete by id: fetch first, verify `resource.familyId === userFamilyId`, return 404 on mismatch. On create: verify the parent baby belongs to the family, then set `familyId: userFamilyId` explicitly. On list: always `where: { familyId: userFamilyId }`.
 
 **Dark mode.** This project does **not** use Tailwind `dark:` classes. Light mode is Tailwind utilities via CVA in a `.styles.ts` file; dark mode is `html.dark .class-name` overrides in a plain `.css` file. Tailwind's `dark:` responds to system preference, which bypasses the in-app theme toggle. Using `dark:` is a bug.
@@ -80,6 +82,10 @@ If you want the tile gated anyway, that is a follow-up: pass `enableBreastMilkTr
 ## Task 1: Pure bag arithmetic
 
 Start here. Everything downstream imports from this module, and it needs no database, no server, and no React.
+
+> **Post-implementation note (commit `60e69fe1`).** Task 1 shipped with one change beyond the code below, made in response to code review. `averageBreastMilkPerDay`'s reduce body was byte-for-byte identical to `calculateBreastMilkBalance`'s `consumedTotal` reduce in `src/utils/breastMilkInventory.ts`, so that logic was extracted into an exported `sumBreastMilkConsumed(feedLogs, targetUnit)` helper in `breastMilkInventory.ts` and both now call it. `averageBreastMilkPerDay` reduced to a guard plus one delegating line, and `isAutoCreatedPumpFeed` is no longer imported by `breastMilkBags.ts`.
+>
+> This is the *only* sanctioned edit to `breastMilkInventory.ts` in this whole plan. The "do not edit that file" rule in the orientation section still stands for everything else — it exists to keep the two ledgers independent, and moving one shared pure predicate does not violate that. `averageBreastMilkPerDay`'s exported signature is unchanged, so no later task is affected.
 
 **Files:**
 - Create: `src/utils/breastMilkBags.ts`

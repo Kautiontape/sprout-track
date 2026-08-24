@@ -3,7 +3,7 @@ import { SleepLogResponse, FeedLogResponse, DiaperLogResponse, PottyLogResponse,
 
 export type ActivityType = SleepLogResponse | FeedLogResponse | DiaperLogResponse | PottyLogResponse | MoodLogResponse | NoteResponse | BathLogResponse | PumpLogResponse | PlayLogResponse | MeasurementResponse | MilestoneResponse | MedicineLogResponse | VaccineLogResponse | (FoodLogResponse & { isFirstTry?: boolean });
 
-export type ActivityTileVariant = 'sleep' | 'feed' | 'diaper' | 'potty' | 'note' | 'bath' | 'pump' | 'play' | 'measurement' | 'milestone' | 'medicine' | 'vaccine' | 'food' | 'default';
+export type ActivityTileVariant = 'sleep' | 'feed' | 'diaper' | 'potty' | 'milkbag' | 'note' | 'bath' | 'pump' | 'play' | 'measurement' | 'milestone' | 'medicine' | 'vaccine' | 'food' | 'default';
 
 export interface ActivityTileProps {
   /**

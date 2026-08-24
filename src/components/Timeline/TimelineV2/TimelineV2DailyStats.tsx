@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useCallback } from 'react';
-import { 
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
@@ -19,7 +19,8 @@ import {
   Baby,
   Syringe,
   Info,
-  Toilet
+  Toilet,
+  Camera
 } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
 import { Button } from '@/src/components/ui/button';
@@ -37,6 +38,8 @@ import { useTimezone } from '@/app/context/timezone';
 import { formatDateLong, formatTimeDisplay } from '@/src/utils/dateFormat';
 import { getSymbol } from '@/src/hooks/useUnit';
 import { computeDayStats } from './computeDayStats';
+import { fetchPhotosEnabled } from '@/src/utils/photoClientApi';
+import { countUniquePhotoIds } from '@/src/utils/photoUtils';
 
 import './TimelineV2DailyStats.css';
 
@@ -75,6 +78,8 @@ interface StatTile {
   avg?: string;
   // Today-only pace detail rendered in an (i) popover on the avg line
   pace?: { usuallyText: string; statusLabel: string };
+  /** Overrides the default filter-toggle behavior when the tile is tapped (e.g. navigating away). */
+  onClick?: () => void;
 }
 
 interface CoreAverages {
@@ -108,6 +113,11 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
   const { dateFormat, timeFormat } = useTimezone();
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [photosEnabled, setPhotosEnabled] = useState(false);
+
+  useEffect(() => {
+    fetchPhotosEnabled().then(setPhotosEnabled);
+  }, []);
 
   // Helper function to format minutes into hours and minutes
   const formatMinutes = (minutes: number): string => {
@@ -217,6 +227,10 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
         statusLabel: status === 'ahead' ? t('Ahead of pace') : status === 'behind' ? t('Behind pace') : t('On pace'),
       };
     };
+
+    // Photos today - unique photo ids across the day's activities (standalone
+    // photo-log entries plus photos attached to other activity types), deduped by id
+    const photosTodayCount = countUniquePhotoIds(activities as { photos?: { id: string }[] }[]);
 
     const tiles: StatTile[] = [];
 
@@ -564,8 +578,22 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
       });
     }
 
+    // Photos Today tile - only shown when the deployment has photos enabled
+    if (photosEnabled && photosTodayCount > 0) {
+      tiles.push({
+        filter: 'photo',
+        label: t('Photos Today'),
+        value: photosTodayCount.toString(),
+        icon: <Camera className="h-full w-full" aria-hidden="true" />,
+        bgColor: 'bg-gray-50',
+        iconColor: 'text-[#e11d48]', // rose - matches photo timeline entries
+        borderColor: 'border-gray-500',
+        bgActiveColor: 'bg-gray-100'
+      });
+    }
+
     return tiles;
-  }, [activities, date, t, defaultBottleUnit, unitSymbol, averages, timeFormat]);
+  }, [activities, date, t, defaultBottleUnit, unitSymbol, averages, timeFormat, photosEnabled]);
 
   const formatDateDisplay = (date: Date): string => {
     return formatDateLong(date, dateFormat);
@@ -687,7 +715,12 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
               <div className="flex flex-wrap gap-0.5">
                 {statTiles.map((tile) => {
                   const isFilterable = tile.filter !== null;
+                  const isClickable = isFilterable || !!tile.onClick;
                   const activate = () => {
+                    if (tile.onClick) {
+                      tile.onClick();
+                      return;
+                    }
                     if (isFilterable) {
                       onFilterChange(tile.filter === activeFilter ? null : tile.filter);
                     }
@@ -696,21 +729,21 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
                   // Rendered as a div (not a button) so the breakdown popover trigger can nest validly
                   <div
                     key={tile.filter ? `${tile.filter}-${tile.label.toLowerCase().replace(/\s+/g, '-')}` : tile.label.toLowerCase().replace(/\s+/g, '-')}
-                    role={isFilterable ? 'button' : undefined}
-                    tabIndex={isFilterable ? 0 : undefined}
+                    role={isClickable ? 'button' : undefined}
+                    tabIndex={isClickable ? 0 : undefined}
                     onClick={activate}
                     onKeyDown={(e) => {
                       // Only act when the tile itself is focused, not a nested control (the popover trigger)
-                      if (isFilterable && e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                      if (isClickable && e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
                         e.preventDefault();
                         activate();
                       }
                     }}
                     className={`relative rounded-xl text-left transition-all duration-200 overflow-hidden ${
-                      // Never show awake time tile as selected, only show selected state for filterable tiles
+                      // Never show awake time tile as selected, only show selected state for filterable/clickable tiles
                       tile.filter !== null && activeFilter === tile.filter
                         ? 'bg-gray-100 cursor-pointer scale-105'
-                        : tile.filter !== null
+                        : isClickable
                         ? 'bg-transparent cursor-pointer'
                         : 'bg-transparent cursor-default'
                     }`}

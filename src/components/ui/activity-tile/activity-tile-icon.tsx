@@ -1,5 +1,5 @@
 import React from 'react';
-import { Moon, Edit, Icon, LampWallDown, Trophy, Baby, Activity, Syringe, Toilet } from 'lucide-react';
+import { Moon, Edit, Icon, LampWallDown, Trophy, Baby, Activity, Syringe, Toilet, Camera } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
 import { cn } from "@/src/lib/utils";
 import { activityTileStyles as styles } from './activity-tile.styles';
@@ -31,7 +31,9 @@ export function ActivityTileIcon({
   }
   // For timeline view, use Lucide icons (smaller icons)
   else if (!isButton) {
-    if ('type' in activity) {
+    if ('photoLogId' in activity) {
+      icon = <Camera className="h-4 w-4" color="#e11d48" />; // photo log
+    } else if ('type' in activity) {
       // Potty before diaper — both carry `type`, but only PottyLog has `pottyLocation`.
       if ('pottyLocation' in activity) {
         icon = <Toilet className={cn('activity-tile-icon-potty', styles.icon.base, styles.icon.variants[variant])} />;

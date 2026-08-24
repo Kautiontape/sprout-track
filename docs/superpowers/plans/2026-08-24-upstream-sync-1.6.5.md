@@ -787,6 +787,60 @@ npm run build
 npm run test
 ```
 
+- [ ] **Step 7b: Point our bottle-type normalizer at upstream's canonical value**
+
+**Do this before the migration dry-run, or the dry run will look fine and production will silently drift.**
+
+Upstream's `20260720120000_fix_mixed_bottle_type_slash` migration rewrites the mixed-bottle value from `Formula\Breast` (backslash) to `Formula/Breast` (forward slash), so it matches its translation key. In this database that is **156 of 701 feed rows**.
+
+Our fork has a `normalizeBottleType` helper upstream does not have. It runs on every write path — `app/api/feed-log/route.ts` (create and update) and the hooks API — and it currently coerces the *correct* value back to the broken one:
+
+```typescript
+'formula\\breast': 'Formula\\Breast',
+'formula/breast': 'Formula\\Breast',
+```
+
+Left alone, the migration fixes history while every new mixed bottle is written back as `Formula\Breast`. That is not cosmetic: upstream 1.6.2 filters on the string in `app/api/breast-milk-balance/route.ts` (`bottleType: { in: ['Breast Milk', 'Formula/Breast'] }`) and branches on it in four places in `src/components/Timeline/utils.tsx`. New mixed bottles would drop out of the breast-milk inventory silently.
+
+This is mechanical conformance to upstream's data contract, the same category as the webhook validator in Task 9. Our decision to normalize on write stands; only the canonical target changes.
+
+In `app/api/utils/bottleType.ts`, change both mixed-bottle entries to the forward-slash value:
+
+```typescript
+  'formula\\breast': 'Formula/Breast',
+  'formula/breast': 'Formula/Breast',
+```
+
+Add a test at `tests/bottleType.test.ts` (the project's tests live in the top-level `tests/` folder):
+
+```typescript
+import { test } from 'vitest';
+import assert from 'node:assert/strict';
+import { normalizeBottleType } from '@/app/api/utils/bottleType';
+
+test('mixed bottles normalize to upstream canonical forward-slash form', () => {
+  assert.equal(normalizeBottleType('Formula\\Breast'), 'Formula/Breast');
+  assert.equal(normalizeBottleType('formula/breast'), 'Formula/Breast');
+  assert.equal(normalizeBottleType('FORMULA/BREAST'), 'Formula/Breast');
+});
+
+test('other bottle types keep their canonical casing', () => {
+  assert.equal(normalizeBottleType('formula'), 'Formula');
+  assert.equal(normalizeBottleType('breast milk'), 'Breast Milk');
+  assert.equal(normalizeBottleType('  '), null);
+  assert.equal(normalizeBottleType(null), null);
+  assert.equal(normalizeBottleType('Homemade'), 'Homemade');
+});
+```
+
+Run it:
+
+```bash
+npm run test
+```
+
+Expected: PASS, including the two new tests.
+
 - [ ] **Step 8: Dry-run the migrations and verify potty rows are untouched**
 
 ```bash

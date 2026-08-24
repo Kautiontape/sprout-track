@@ -22,7 +22,8 @@ import {
   Plus,
   Minus,
   Syringe,
-  Toilet
+  Toilet,
+  Camera
 } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
 import { 
@@ -67,6 +68,10 @@ const pottyTypeLabel = (type: string, t: (key: string) => string): string =>
   type === 'WET' ? t('Pee') : type === 'DIRTY' ? t('Poop') : t('Pee and Poop');
 
 export const getActivityIcon = (activity: ActivityType) => {
+  // Photo log - check first since it has no overlapping fields with other types
+  if ('photoLogId' in activity) {
+    return <Camera className="h-4 w-4 text-[#e11d48]" aria-hidden="true" />;
+  }
   // Play activity - check before sleep since both have duration and type
   if (isPlayActivity(activity)) {
     return <Baby className="h-4 w-4 text-black" aria-hidden="true" />;
@@ -673,6 +678,16 @@ export const getActivityDetails = (activity: ActivityType, settings: Settings | 
 };
 
 export const getActivityDescription = (activity: ActivityType, settings: Settings | null, t: (key: string) => string): ActivityDescription => {
+  // Photo log - check first since it has no overlapping fields with other types
+  if ('photoLogId' in activity) {
+    const photos = activity.photos;
+    const firstCaption = photos?.find(p => p.caption)?.caption;
+    const count = photos?.length ?? 0;
+    return {
+      type: t('Photo'),
+      details: firstCaption || `${count} ${count === 1 ? t('photo') : t('photos')}`
+    };
+  }
   // Play activity - check before sleep since both have duration and type
   if (isPlayActivity(activity)) {
     const formatPlayType = (type: string) => {
@@ -1047,6 +1062,7 @@ export const getActivityDescription = (activity: ActivityType, settings: Setting
 };
 
 export const getActivityEndpoint = (activity: ActivityType): string => {
+  if ('photoLogId' in activity) return 'photo-log';
   // Check play activity before sleep since both have duration and type
   if (isPlayActivity(activity)) return 'play-log';
   // Check for breast milk adjustment before pump
@@ -1071,6 +1087,10 @@ export const getActivityEndpoint = (activity: ActivityType): string => {
 };
 
 export const getActivityStyle = (activity: ActivityType): ActivityStyle => {
+  // Photo log - check first since it has no overlapping fields with other types
+  if ('photoLogId' in activity) {
+    return { bg: 'bg-white border-2 border-[#e11d48]', textColor: 'text-[#e11d48]' };
+  }
   // Play activity - check before sleep since both have duration and type
   if (isPlayActivity(activity)) {
     return { bg: 'bg-[#F3C4A2]', textColor: 'text-white' };

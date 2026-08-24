@@ -123,6 +123,7 @@ async function handlePut(req: NextRequest, authContext: AuthResult) {
       'includeSolidsInFeedTimer',
       'dateFormat', 'timeFormat',
       'dailyStatsAvgDays',
+      'photoQuotaMB',
     ];
 
     const isAdmin = authContext.caretakerRole === 'ADMIN' ||
@@ -138,6 +139,22 @@ async function handlePut(req: NextRequest, authContext: AuthResult) {
         // A blank securityPin means "keep the existing PIN" — never overwrite the
         // family login PIN with an empty value (responses no longer return it).
         if (field === 'securityPin' && (body[field] === '' || body[field] === null)) {
+          continue;
+        }
+        if (field === 'photoQuotaMB') {
+          // null clears the family override, falling back to the AppConfig default.
+          if (body[field] === null) {
+            (data as any)[field] = null;
+            continue;
+          }
+          const quota = parseInt(body[field], 10);
+          if (isNaN(quota) || quota < 1) {
+            return NextResponse.json<ApiResponse<null>>(
+              { success: false, error: 'Photo quota must be a positive number of MB' },
+              { status: 400 }
+            );
+          }
+          (data as any)[field] = quota;
           continue;
         }
         (data as any)[field] = body[field];

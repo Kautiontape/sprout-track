@@ -28,37 +28,18 @@ import {
   Apple
 } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
-import { 
-  ActivityType, 
-  ActivityDetails, 
-  ActivityDescription, 
-  ActivityStyle 
+import {
+  ActivityType,
+  ActivityDetails,
+  ActivityDescription,
+  ActivityStyle
 } from './types';
 import { getSymbol } from '@/src/hooks/useUnit';
 import { FOOD_ENJOYMENT_LABELS, isValidEnjoyment } from '@/src/utils/foodLogUtils';
+import { lbToLbOz, formatWeightDisplay } from '@/src/utils/weightUnits';
+import { formatPauseDuration } from '@/src/utils/pauseDisplay';
 
-// Split decimal pounds into whole pounds and ounces (to 1 decimal place).
-// Rolls over when ounces round up to 16.
-export function lbToLbOz(value: number): { lbs: number; oz: number } {
-  let lbs = Math.floor(value);
-  let oz = Math.round((value - lbs) * 16 * 10) / 10;
-  if (oz >= 16) {
-    lbs += 1;
-    oz -= 16;
-  }
-  return { lbs, oz };
-}
-
-export function formatWeightDisplay(value: number, unit: string): string {
-  if (unit.toLowerCase() === 'lb') {
-    const { lbs, oz } = lbToLbOz(value);
-    if (lbs === 0 && oz === 0) return `0 lbs`;
-    if (lbs === 0) return `${oz} oz`;
-    if (oz === 0) return `${lbs} lbs`;
-    return `${lbs} lb ${oz} oz`;
-  }
-  return `${value} ${unit}`;
-}
+export { lbToLbOz, formatWeightDisplay };
 
 const PLAY_TYPES = ['TUMMY_TIME', 'INDOOR_PLAY', 'OUTDOOR_PLAY', 'WALK', 'CUSTOM'];
 
@@ -367,7 +348,7 @@ export const getActivityDetails = (activity: ActivityType, settings: Settings | 
       // Show amount for bottle and solids - use unitAbbr instead of hardcoded units
       if (activity.amount && (activity.type === 'BOTTLE' || activity.type === 'SOLIDS')) {
         const unit = (activity as any).unitAbbr || (activity.type === 'BOTTLE' ? 'oz' : 'g');
-        if ((activity as any).bottleType === 'Formula\\Breast' && (activity as any).breastMilkAmount != null) {
+        if ((activity as any).bottleType === 'Formula/Breast' && (activity as any).breastMilkAmount != null) {
           const bmAmt = (activity as any).breastMilkAmount;
           const formulaAmt = Math.round((activity.amount - bmAmt) * 100) / 100;
           details.push({ label: t('Breast Milk Amount'), value: `${bmAmt} ${unit}` });
@@ -400,6 +381,11 @@ export const getActivityDetails = (activity: ActivityType, settings: Settings | 
         } else if (activity.amount) {
           details.push({ label: t('Duration'), value: `${activity.amount} ${t('minutes')}` });
         }
+
+        const pauseText = formatPauseDuration((activity as any).pauseDuration ?? 0, t);
+        if (pauseText) {
+          details.push({ label: t('Pause'), value: pauseText });
+        }
       }
 
       // Show food for solids
@@ -412,7 +398,7 @@ export const getActivityDetails = (activity: ActivityType, settings: Settings | 
         const bottleType = (activity as any).bottleType;
         details.push({
           label: t('Bottle Type'),
-          value: t(bottleType.replace('\\', '/'))
+          value: t(bottleType)
         });
       }
 
@@ -866,13 +852,16 @@ export const getActivityDescription = (activity: ActivityType, settings: Setting
         } else if (activity.amount) {
           duration = `${activity.amount} ${t('min')}`;
         }
+
+        const pauseText = formatPauseDuration((activity as any).pauseDuration ?? 0, t);
+        const pause = pauseText ? `${t('Pause')}: ${pauseText}` : '';
         
-        details = [side, duration].filter(Boolean).join(' • ');
+        details = [side, duration, pause].filter(Boolean).join(' • ');
       } else if (activity.type === 'BOTTLE') {
         // Use unitAbbr instead of hardcoded 'oz'
         const unit = ((activity as any).unitAbbr || 'oz').toLowerCase();
 
-        if ((activity as any).bottleType === 'Formula\\Breast' && (activity as any).breastMilkAmount != null) {
+        if ((activity as any).bottleType === 'Formula/Breast' && (activity as any).breastMilkAmount != null) {
           const bmAmt = (activity as any).breastMilkAmount;
           const formulaAmt = Math.round((((activity as any).amount || 0) - bmAmt) * 100) / 100;
           details = `${bmAmt} ${unit} ${t('BM')} + ${formulaAmt} ${unit} ${t('Formula')}`;
@@ -881,10 +870,10 @@ export const getActivityDescription = (activity: ActivityType, settings: Setting
         }
 
         // Add bottle type if available (skip for mixed since already shown above)
-        if ((activity as any).bottleType && (activity as any).bottleType !== 'Formula\\Breast') {
-          const bottleType = (activity as any).bottleType.replace('\\', '/');
+        if ((activity as any).bottleType && (activity as any).bottleType !== 'Formula/Breast') {
+          const bottleType = (activity as any).bottleType;
           details += ` (${t(bottleType)})`;
-        } else if ((activity as any).bottleType === 'Formula\\Breast' && !(activity as any).breastMilkAmount) {
+        } else if ((activity as any).bottleType === 'Formula/Breast' && !(activity as any).breastMilkAmount) {
           details += ` (${t('Formula/Breast')})`;
         }
       } else if (activity.type === 'SOLIDS') {

@@ -100,6 +100,7 @@ export interface BabyData {
   feedWarningTime: string;
   diaperWarningTime: string;
   dayNightFlipConfig?: string | null;
+  feedTimerTypes?: string | null;
   age?: string;
 }
 

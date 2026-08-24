@@ -15,6 +15,7 @@ import { Check, ArrowLeftRight, Pause, Play, TriangleAlert } from 'lucide-react'
 import { Textarea } from '@/src/components/ui/textarea';
 import { Switch } from '@/src/components/ui/switch';
 import { useTimezone } from '@/app/context/timezone';
+import { resolveClientStartTime } from '@/src/utils/breastfeedStart';
 import { useTheme } from '@/src/context/theme';
 import { useToast } from '@/src/components/ui/toast';
 import { handleExpirationError } from '@/src/lib/expiration-error-handler';
@@ -101,6 +102,10 @@ export default function FeedForm({
   });
   const [loading, setLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  // Whether the user actually touched the date/time picker. If not, starting a
+  // breastfeed sends no start time so the server starts the session at "now"
+  // (avoids the seconds-since-top-of-minute offset from the seconds-less default).
+  const [dateTimeTouched, setDateTimeTouched] = useState(false);
   const [initializedTime, setInitializedTime] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string>('');
   const [defaultSettings, setDefaultSettings] = useState({
@@ -214,7 +219,7 @@ export default function FeedForm({
           ...prev,
           amount: data.data.amount.toString(),
           unit: data.data.unitAbbr || prev.unit,
-          ...(lastBottleType === 'Formula\\Breast' && lastBmAmount != null ? {
+          ...(lastBottleType === 'Formula/Breast' && lastBmAmount != null ? {
             breastMilkAmount: lastBmAmount.toString(),
             formulaAmount: (data.data.amount - lastBmAmount).toString(),
           } : {}),
@@ -295,7 +300,8 @@ export default function FeedForm({
   // Handle date/time change
   const handleDateTimeChange = (date: Date) => {
     setSelectedDateTime(date);
-    
+    setDateTimeTouched(true);
+
     // Also update the time in formData for compatibility with existing code
     // Format the date as ISO string for storage in formData
     const year = date.getFullYear();
@@ -312,7 +318,9 @@ export default function FeedForm({
     if (isOpen && !isInitialized) {
       // Fetch default settings when form opens
       fetchDefaultSettings();
-      
+      // Start each open with an untouched picker (default = start at "now").
+      setDateTimeTouched(false);
+
       if (activity) {
       // Editing mode - populate with activity data
       // Calculate feedDuration from different sources based on what's available
@@ -372,9 +380,9 @@ export default function FeedForm({
         reactionDescription: (activity as any).reactionDescription || '',
         reactionCause: (activity as any).reactionCause || '',
         bottleType: activityBottleType,
-        breastMilkAmount: activityBottleType === 'Formula\\Breast' && activityBmAmount != null
+        breastMilkAmount: activityBottleType === 'Formula/Breast' && activityBmAmount != null
           ? activityBmAmount.toString() : '',
-        formulaAmount: activityBottleType === 'Formula\\Breast' && activityBmAmount != null && activity.amount != null
+        formulaAmount: activityBottleType === 'Formula/Breast' && activityBmAmount != null && activity.amount != null
           ? (activity.amount - activityBmAmount).toString() : '',
         feedDuration: feedDuration,
         leftDuration: activity.side === 'LEFT' ? feedDuration : 0,
@@ -569,7 +577,7 @@ export default function FeedForm({
 
     // For bottle feeding, validate amount
     if (formData.type === 'BOTTLE') {
-      if (formData.bottleType === 'Formula\\Breast') {
+      if (formData.bottleType === 'Formula/Breast') {
         const bmAmt = parseFloat(formData.breastMilkAmount || '0');
         const fAmt = parseFloat(formData.formulaAmount || '0');
         if (bmAmt <= 0 || fAmt <= 0) {
@@ -739,12 +747,12 @@ export default function FeedForm({
         feedDuration: duration
       }),
       ...(formData.type === 'BOTTLE' && {
-        amount: formData.bottleType === 'Formula\\Breast'
+        amount: formData.bottleType === 'Formula/Breast'
           ? parseFloat(formData.breastMilkAmount || '0') + parseFloat(formData.formulaAmount || '0')
           : parseFloat(formData.amount),
         unitAbbr: formData.unit,
       }),
-      ...(formData.type === 'BOTTLE' && formData.bottleType === 'Formula\\Breast' && {
+      ...(formData.type === 'BOTTLE' && formData.bottleType === 'Formula/Breast' && {
         breastMilkAmount: parseFloat(formData.breastMilkAmount || '0'),
       }),
       ...(formData.type === 'BOTTLE' && formData.bottleType && { bottleType: formData.bottleType }),
@@ -912,6 +920,7 @@ export default function FeedForm({
 
     // Reset initialization flag
     setIsInitialized(false);
+    setDateTimeTouched(false);
     setManualEntry(false);
     setPendingPhotoFiles([]);
     setAttachedPhotos([]);
@@ -927,18 +936,22 @@ export default function FeedForm({
     setLoading(true);
     try {
       const authToken = localStorage.getItem('authToken');
+      // Only backdate the session when the user actually set the time; otherwise
+      // omit startTime so the server starts it at "now" (timer opens at 0:00).
+      const clientStart = resolveClientStartTime(dateTimeTouched, selectedDateTime);
+      const startTime = clientStart ? toUTCString(clientStart) : undefined;
       const response = await fetch('/api/active-breastfeed', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': authToken ? `Bearer ${authToken}` : '',
         },
-        body: JSON.stringify({ babyId, side }),
+        body: JSON.stringify({ babyId, side, ...(startTime ? { startTime } : {}) }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        showToast({ variant: 'error', title: t('Error'), message: errorData.error || t('Failed to start breastfeed'), duration: 5000 });
+        showToast({ variant: 'error', title: t('Error'), message: t(errorData.error || 'Failed to start breastfeed'), duration: 5000 });
         return;
       }
 

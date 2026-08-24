@@ -55,3 +55,5 @@ sitemap.xml
 
 # Datagrip
 .idea
+# Scratch schema for upstream-sync migration dry-runs
+prisma/sync-test.prisma

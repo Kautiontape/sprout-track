@@ -178,7 +178,7 @@ conscious act rather than an autopilot one.
 Every rung: `tsc --noEmit`, `next build`, `scripts/check-missing-translations.js`
 clean. (`npm run lint` is known-broken and is not a gate.)
 
-Deep rungs add: `prisma migrate deploy` against `/db/sync-test.db` (a copy),
+Deep rungs add: `prisma migrate deploy` against `db/sync-test.db` (a copy),
 `npm run dev`, and a browser smoke test of the feature that rung touched.
 
 **At rung 1.4.0, wire up the tests.** Upstream introduces vitest there. Our six test
@@ -191,10 +191,10 @@ and potty stats for free.
 
 ## Data safety
 
-Before starting, back up `/db/baby-tracker.db` to
+Before starting, back up `db/baby-tracker.db` to
 `.pre-upstream-20260824-<hhmmss>.bak`, matching the existing `.pre-flip-` /
 `.pre-potty-` convention. Deep-rung migration testing runs against a copy at
-`/db/sync-test.db` via a `DATABASE_URL` override.
+`db/sync-test.db` via a `DATABASE_URL` override.
 
 Two upstream releases ship data migrations that rewrite existing rows — 1.6.0
 (solid feeds → food logs) and 1.6.2 (mixed bottle-type values). These are the rungs

@@ -31,6 +31,22 @@
 **Untouched by this plan:**
 - `src/components/NurseryMode/` — our nursery implementation. No edits at any rung.
 
+## Scratch database canaries
+
+The local dev database is a stale June copy — 301 feeds and 244 diapers, but zero
+potty logs and zero solid feeds. Row-count checks against it would be vacuous, so
+`db/sync-test.db` was seeded with canary rows before the ladder started:
+
+- **5 `PottyLog` rows** (ids `canary-potty-1`..`5`, one with a NULL `pottyLocation`).
+  No upstream migration may alter or delete these. This is the invariant canary.
+- **4 `FeedLog` rows with `type='SOLIDS'`** (ids `canary-solid-1`..`4`, one with NULL
+  amount and food). Upstream's 1.6.0 migration converts these into `FoodLog` rows.
+
+The datasource URL is a literal in `schema.prisma` — Prisma requires it, see
+`scripts/prisma-provider.js` — so `DATABASE_URL` is ignored. Every dry run
+regenerates a scratch schema pointing at `db/sync-test.db`. `prisma/sync-test.prisma`
+is gitignored so it cannot pollute a merge.
+
 ---
 
 ### Task 1: Setup — remote, backups, branch
@@ -70,13 +86,13 @@ If any SHA differs, STOP — upstream has moved or retagged since this plan was 
 
 - [ ] **Step 3: Back up the real database**
 
-The database at `/db/baby-tracker.db` is real family data, not test data.
+The database at `db/baby-tracker.db` is real family data, not test data.
 
 ```bash
 STAMP=$(date +%Y%m%d-%H%M%S)
-cp /db/baby-tracker.db "/db/baby-tracker.db.pre-upstream-${STAMP}.bak"
-cp /db/baby-tracker-logs.db "/db/baby-tracker-logs.db.pre-upstream-${STAMP}.bak"
-ls -la /db/*.bak | tail -4
+cp db/baby-tracker.db "db/baby-tracker.db.pre-upstream-${STAMP}.bak"
+cp db/baby-tracker-logs.db "db/baby-tracker-logs.db.pre-upstream-${STAMP}.bak"
+ls -la db/*.bak | tail -4
 ```
 
 Expected: two new `.bak` files with today's date, each roughly the size of its source (~1.6M and ~29K).
@@ -84,11 +100,11 @@ Expected: two new `.bak` files with today's date, each roughly the size of its s
 - [ ] **Step 4: Create the scratch database for migration dry-runs**
 
 ```bash
-cp /db/baby-tracker.db /db/sync-test.db
-ls -la /db/sync-test.db
+cp db/baby-tracker.db db/sync-test.db
+ls -la db/sync-test.db
 ```
 
-Expected: `/db/sync-test.db` exists at ~1.6M. This copy — never the real database — receives every `prisma migrate deploy` in this plan until cutover.
+Expected: `db/sync-test.db` exists at ~1.6M. This copy — never the real database — receives every `prisma migrate deploy` in this plan until cutover.
 
 - [ ] **Step 5: Create the sync branch**
 
@@ -418,7 +434,8 @@ Expected: no `tsc` output; build ends with `✓ Compiled successfully`.
 - [ ] **Step 8: Dry-run the migrations against the scratch database**
 
 ```bash
-DATABASE_URL="file:/db/sync-test.db" npx prisma migrate deploy
+sed 's|url      = "file:../db/baby-tracker.db"|url      = "file:../db/sync-test.db"|' prisma/schema.prisma > prisma/sync-test.prisma
+npx prisma migrate deploy --schema=prisma/sync-test.prisma
 ```
 
 Expected: Prisma reports applying upstream's pending migrations (`20260711000000_add_feed_session_id`, `20260711000001_add_feed_timer_from`, `20260711000002_add_bath_type`) and ends with `All migrations have been successfully applied.` Our already-applied migrations are left alone despite sorting later by date.
@@ -557,7 +574,8 @@ Expected: no `tsc` output; `✓ Compiled successfully`; all tests pass including
 - [ ] **Step 7: Dry-run the migrations**
 
 ```bash
-DATABASE_URL="file:/db/sync-test.db" npx prisma migrate deploy
+sed 's|url      = "file:../db/baby-tracker.db"|url      = "file:../db/sync-test.db"|' prisma/schema.prisma > prisma/sync-test.prisma
+npx prisma migrate deploy --schema=prisma/sync-test.prisma
 ```
 
 Expected: `All migrations have been successfully applied.`
@@ -643,21 +661,30 @@ npm run test
 - [ ] **Step 7: Record the pre-migration row counts on the scratch database**
 
 ```bash
-sqlite3 /db/sync-test.db "SELECT COUNT(*) AS solid_feeds FROM FeedLog WHERE type = 'SOLIDS';"
-sqlite3 /db/sync-test.db "SELECT COUNT(*) AS potty_logs FROM PottyLog;"
+sqlite3 db/sync-test.db "SELECT COUNT(*) AS solid_feeds FROM FeedLog WHERE type = 'SOLIDS';"
+sqlite3 db/sync-test.db "SELECT COUNT(*) AS potty_logs FROM PottyLog;"
 ```
 
-Write both numbers down. The potty count must not change; the solid-feed count is what upstream's migration converts.
+Expected: `solid_feeds` is **4** and `potty_logs` is **5** — the seeded canaries. The potty count must not change; the solid-feed count is what upstream's migration converts.
 
 - [ ] **Step 8: Run the migration and verify the conversion**
 
 ```bash
-DATABASE_URL="file:/db/sync-test.db" npx prisma migrate deploy
-sqlite3 /db/sync-test.db "SELECT COUNT(*) FROM FoodLog;"
-sqlite3 /db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
+sed 's|url      = "file:../db/baby-tracker.db"|url      = "file:../db/sync-test.db"|' prisma/schema.prisma > prisma/sync-test.prisma
+npx prisma migrate deploy --schema=prisma/sync-test.prisma
+sqlite3 db/sync-test.db "SELECT COUNT(*) FROM FoodLog;"
+sqlite3 db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
 ```
 
-Expected: `All migrations have been successfully applied.` The `FoodLog` count reflects the converted solid feeds from Step 7. **The `PottyLog` count is unchanged from Step 7** — if it moved, stop and investigate before going further.
+Expected: `All migrations have been successfully applied.` The `FoodLog` count is **at least 4**, reflecting the four converted canary solid feeds from Step 7. **The `PottyLog` count is still 5** — if it moved, stop and investigate before going further.
+
+Confirm the canary rows themselves survived intact, not just the count:
+
+```bash
+sqlite3 db/sync-test.db "SELECT id, type, COALESCE(pottyLocation,'(null)') FROM PottyLog WHERE id LIKE 'canary-potty-%' ORDER BY id;"
+```
+
+Expected: all five rows, with types `WET`, `DIRTY`, `BOTH`, `WET`, `WET` and locations `Toilet`, `Potty Chair`, `Sink`, `(null)`, `Outside`.
 
 - [ ] **Step 9: Smoke-test**
 
@@ -751,13 +778,14 @@ npm run test
 - [ ] **Step 8: Dry-run the migrations and verify potty rows are untouched**
 
 ```bash
-sqlite3 /db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
-DATABASE_URL="file:/db/sync-test.db" npx prisma migrate deploy
-sqlite3 /db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
-sqlite3 /db/sync-test.db "SELECT DISTINCT bottleType FROM FeedLog WHERE bottleType IS NOT NULL;"
+sqlite3 db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
+sed 's|url      = "file:../db/baby-tracker.db"|url      = "file:../db/sync-test.db"|' prisma/schema.prisma > prisma/sync-test.prisma
+npx prisma migrate deploy --schema=prisma/sync-test.prisma
+sqlite3 db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
+sqlite3 db/sync-test.db "SELECT DISTINCT bottleType FROM FeedLog WHERE bottleType IS NOT NULL;"
 ```
 
-Expected: `All migrations have been successfully applied.` The `PottyLog` count is identical before and after. The distinct bottle types show upstream's post-migration canonical values with no slash-separated leftovers.
+Expected: `All migrations have been successfully applied.` The `PottyLog` count is **5** both before and after. The distinct bottle types show upstream's post-migration canonical values with no slash-separated leftovers.
 
 - [ ] **Step 9: Commit the merge**
 
@@ -1014,12 +1042,13 @@ npm run test
 - [ ] **Step 8: Dry-run the migrations**
 
 ```bash
-sqlite3 /db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
-DATABASE_URL="file:/db/sync-test.db" npx prisma migrate deploy
-sqlite3 /db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
+sqlite3 db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
+sed 's|url      = "file:../db/baby-tracker.db"|url      = "file:../db/sync-test.db"|' prisma/schema.prisma > prisma/sync-test.prisma
+npx prisma migrate deploy --schema=prisma/sync-test.prisma
+sqlite3 db/sync-test.db "SELECT COUNT(*) FROM PottyLog;"
 ```
 
-Expected: `All migrations have been successfully applied.` and an unchanged potty count.
+Expected: `All migrations have been successfully applied.` and a potty count of **5** both before and after.
 
 - [ ] **Step 9: Smoke-test**
 
@@ -1292,9 +1321,9 @@ Time has passed since Task 1 and real entries have been logged since.
 
 ```bash
 STAMP=$(date +%Y%m%d-%H%M%S)
-cp /db/baby-tracker.db "/db/baby-tracker.db.pre-cutover-${STAMP}.bak"
-cp /db/baby-tracker-logs.db "/db/baby-tracker-logs.db.pre-cutover-${STAMP}.bak"
-ls -la /db/*pre-cutover* 
+cp db/baby-tracker.db "db/baby-tracker.db.pre-cutover-${STAMP}.bak"
+cp db/baby-tracker-logs.db "db/baby-tracker-logs.db.pre-cutover-${STAMP}.bak"
+ls -la db/*pre-cutover* 
 ```
 
 Expected: two fresh `.bak` files.
@@ -1302,8 +1331,8 @@ Expected: two fresh `.bak` files.
 - [ ] **Step 2: Record the real database's potty and feed counts**
 
 ```bash
-sqlite3 /db/baby-tracker.db "SELECT COUNT(*) AS potty FROM PottyLog;"
-sqlite3 /db/baby-tracker.db "SELECT COUNT(*) AS solid_feeds FROM FeedLog WHERE type = 'SOLIDS';"
+sqlite3 db/baby-tracker.db "SELECT COUNT(*) AS potty FROM PottyLog;"
+sqlite3 db/baby-tracker.db "SELECT COUNT(*) AS solid_feeds FROM FeedLog WHERE type = 'SOLIDS';"
 ```
 
 Write both numbers down.
@@ -1320,8 +1349,8 @@ git log --oneline -1
 
 ```bash
 npx prisma migrate deploy
-sqlite3 /db/baby-tracker.db "SELECT COUNT(*) AS potty FROM PottyLog;"
-sqlite3 /db/baby-tracker.db "SELECT COUNT(*) AS food FROM FoodLog;"
+sqlite3 db/baby-tracker.db "SELECT COUNT(*) AS potty FROM PottyLog;"
+sqlite3 db/baby-tracker.db "SELECT COUNT(*) AS food FROM FoodLog;"
 ```
 
 Expected: `All migrations have been successfully applied.` The potty count matches Step 2 exactly. The food count reflects the converted solid feeds from Step 2.
@@ -1351,7 +1380,7 @@ Open the deployed app and confirm: login works, the log-entry screen renders, a 
 - [ ] **Step 7: Clean up the scratch database and branch**
 
 ```bash
-rm -f /db/sync-test.db
+rm -f db/sync-test.db
 git branch -d sync/upstream-1.6.5
 ```
 
@@ -1389,12 +1418,15 @@ accumulate and it became a multi-day project — see
    `git tag --sort=-v:refname | head`
 2. Branch: `git checkout -b sync/upstream-<version>`
 3. Back up the real database before any migration:
-   `cp /db/baby-tracker.db /db/baby-tracker.db.pre-upstream-$(date +%Y%m%d-%H%M%S).bak`
+   `cp db/baby-tracker.db db/baby-tracker.db.pre-upstream-$(date +%Y%m%d-%H%M%S).bak`
 4. Merge one tag at a time: `git merge <tag> --no-commit --no-ff`
 5. Resolve using the recipes below.
 6. Verify: `npx tsc --noEmit && npm run build && npm run test`
-7. Migrate a copy first: `cp /db/baby-tracker.db /db/sync-test.db` then
-   `DATABASE_URL="file:/db/sync-test.db" npx prisma migrate deploy`
+7. Migrate a copy first: `cp db/baby-tracker.db db/sync-test.db` then
+   The datasource URL is a literal in `schema.prisma` (Prisma requires it — see
+   `scripts/prisma-provider.js`), so `DATABASE_URL` is ignored. Use a scratch schema:
+   `sed 's|url      = "file:../db/baby-tracker.db"|url      = "file:../db/sync-test.db"|' prisma/schema.prisma > prisma/sync-test.prisma`
+   then `npx prisma migrate deploy --schema=prisma/sync-test.prisma`
 8. Merge to `main` only when done — a push to `main` deploys to ktn.
 
 ## Conflict recipes

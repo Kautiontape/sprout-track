@@ -24,7 +24,8 @@ import {
   Syringe,
   Camera,
   Utensils,
-  Apple
+  Apple,
+  Milk
 } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
 import {
@@ -52,6 +53,14 @@ const isPlayActivity = (activity: any): boolean => {
 const pottyTypeLabel = (type: string, t: (key: string) => string): string =>
   type === 'WET' ? t('Pee') : type === 'DIRTY' ? t('Poop') : t('Pee and Poop');
 
+/** "Froze 3 bags" / "Used 2 bags", never a bare signed number. */
+const bagCountLabel = (bagCount: number, t: (key: string) => string): string => {
+  const magnitude = Math.abs(bagCount);
+  const verb = bagCount < 0 ? t('Used') : t('Froze');
+  const noun = magnitude === 1 ? t('bag') : t('bags');
+  return `${verb} ${magnitude} ${noun}`;
+};
+
 // EXPLORATION: render the activity's real PNG illustration instead of a mono
 // lucide glyph. `timeline-png-icon` lets the CSS strip the colored box padding
 // so the circular illustration fills the icon slot cleanly. The 36px size lives
@@ -77,6 +86,11 @@ export const getActivityIcon = (activity: ActivityType) => {
   if ('doseAmount' in activity && 'medicineId' in activity) {
     // Medicine or supplement log (no separate supplement art yet)
     return pngIcon('/med-128.png');
+  }
+  // Frozen milk bags: `bagCount` is unique across every model. Checked first so a
+  // future rename of `reason`/`amount` can't reroute these into the adjustment branch.
+  if ('bagCount' in activity) {
+    return <Milk className="h-4 w-4 text-cyan-600" aria-hidden="true" />;
   }
   // Check for breast milk adjustment BEFORE pump (both have amount) - no PNG art,
   // keep the lucide +/- glyph on the purple box
@@ -271,6 +285,30 @@ export const getActivityDetails = (activity: ActivityType, settings: Settings | 
     return {
       title: t('Activity Record'),
       details: [...playDetails, ...caretakerDetail],
+    };
+  }
+
+  if ('bagCount' in activity) {
+    const bagCount = (activity as any).bagCount as number;
+    const amountPerBag = (activity as any).amountPerBag as number;
+    const unit = (activity as any).unitAbbr || 'OZ';
+    const details = [
+      { label: t('Time'), value: formatTime(activity.time, settings, true, t) },
+      { label: t('Bags'), value: bagCountLabel(bagCount, t) },
+      { label: t('Amount Per Bag'), value: `${amountPerBag} ${t(unit.toLowerCase())}` },
+      { label: t('Total'), value: `${Math.round(Math.abs(bagCount) * amountPerBag * 100) / 100} ${t(unit.toLowerCase())}` },
+    ];
+
+    if ((activity as any).reason) {
+      details.push({ label: t('Reason'), value: t((activity as any).reason) });
+    }
+    if ((activity as any).notes) {
+      details.push({ label: t('Notes'), value: (activity as any).notes });
+    }
+
+    return {
+      title: t('Frozen Milk Record'),
+      details: [...details, ...caretakerDetail],
     };
   }
 
@@ -815,6 +853,21 @@ export const getActivityDescription = (activity: ActivityType, settings: Setting
       details: [medTime, dose, notes].filter(Boolean).join(' • ')
     };
   }
+  if ('bagCount' in activity) {
+    const bagCount = (activity as any).bagCount as number;
+    const amountPerBag = (activity as any).amountPerBag as number;
+    const unit = (activity as any).unitAbbr || 'OZ';
+    const time = formatTime(activity.time, settings, true, t);
+    const total = `${Math.round(Math.abs(bagCount) * amountPerBag * 100) / 100} ${t(unit.toLowerCase())}`;
+    let notes: string = (activity as any).notes ?? '';
+    if (notes.length > 30) {
+      notes = notes.slice(0, 30) + '...';
+    }
+    return {
+      type: bagCountLabel(bagCount, t),
+      details: [time, total, notes].filter(Boolean).join(' • ')
+    };
+  }
   if ('type' in activity) {
     if ('duration' in activity) {
       const startTimeFormatted = activity.startTime ? formatTime(activity.startTime, settings, true, t) : t('unknown');
@@ -1166,6 +1219,7 @@ export const getActivityDescription = (activity: ActivityType, settings: Setting
 
 export const getActivityEndpoint = (activity: ActivityType): string => {
   if ('photoLogId' in activity) return 'photo-log';
+  if ('bagCount' in activity) return 'breast-milk-bag-log';
   // Food log (issue #203 / #247)
   if (isFoodLogActivity(activity)) return 'food-log';
   // Check play activity before sleep since both have duration and type
@@ -1192,6 +1246,14 @@ export const getActivityEndpoint = (activity: ActivityType): string => {
 };
 
 export const getActivityStyle = (activity: ActivityType): ActivityStyle => {
+  // Cyan reads as "frozen" and is unused elsewhere: teal is diaper, sky is feed,
+  // fuchsia is potty, purple is pump.
+  if ('bagCount' in activity) {
+    return {
+      bg: 'bg-gradient-to-r from-cyan-500 to-cyan-600',
+      textColor: 'text-white',
+    };
+  }
   // Photo log - check first since it has no overlapping fields with other types
   if ('photoLogId' in activity) {
     return { bg: 'bg-white border-2 border-[#e11d48]', textColor: 'text-[#e11d48]' };

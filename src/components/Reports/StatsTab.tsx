@@ -20,6 +20,7 @@ import FeedingStatsSection from './FeedingStatsSection';
 import DiaperStatsSection from './DiaperStatsSection';
 import PottyStatsSection from './PottyStatsSection';
 import PumpingStatsSection from './PumpingStatsSection';
+import BreastMilkStashSection from './BreastMilkStashSection';
 import BathStatsSection from './BathStatsSection';
 import PlayStatsSection from './PlayStatsSection';
 import { computePottyStats } from './potty-stats.utils';
@@ -936,6 +937,14 @@ const StatsTab: React.FC<StatsTabProps> = ({
 
         {/* Pumping Section */}
         <PumpingStatsSection stats={stats.pump} activities={activities} dateRange={dateRange} enableBreastMilkTracking={enableBreastMilkTracking} />
+
+        {/* Frozen Milk Section */}
+        <BreastMilkStashSection
+          activities={activities}
+          dateRange={dateRange}
+          unit={stats.pump.unit}
+          enableBreastMilkTracking={enableBreastMilkTracking}
+        />
 
         {/* Baths Section */}
         <BathStatsSection stats={stats.bath} activities={activities} dateRange={dateRange} />

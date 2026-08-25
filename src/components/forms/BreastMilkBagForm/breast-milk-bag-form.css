@@ -1,0 +1,37 @@
+/*
+ * Dark mode for the frozen milk bag form.
+ *
+ * These use `html.dark` rather than Tailwind's `dark:` prefix on purpose:
+ * `dark:` follows the OS preference and would bypass the in-app theme toggle.
+ * Light mode lives in the Tailwind classes on the component itself.
+ */
+
+html.dark .milkbag-direction-toggle {
+  border-color: #4b5563;
+  background-color: #1f2937;
+}
+
+html.dark .milkbag-direction-option {
+  color: #9ca3af;
+}
+
+html.dark .milkbag-direction-option-active {
+  background-color: #0e7490;
+  color: #ffffff;
+}
+
+html.dark .milkbag-stepper-button {
+  border-color: #4b5563;
+  background-color: #374151;
+  color: #e5e7eb;
+}
+
+html.dark .milkbag-stepper-value {
+  color: #f3f4f6;
+}
+
+html.dark .milkbag-derived-total {
+  border-color: #4b5563;
+  background-color: #1f2937;
+  color: #d1d5db;
+}

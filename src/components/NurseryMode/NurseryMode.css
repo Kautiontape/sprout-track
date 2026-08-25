@@ -54,6 +54,11 @@
 .nursery-kiosk .nk-grid { display: grid; gap: 6px; grid-template-columns: 1fr 1fr 1fr; }
 .nursery-kiosk .nk-grid.two { grid-template-columns: 1fr 1fr; }
 .nursery-kiosk .nk-grid.one { grid-template-columns: 1fr; }
+/* A row that belongs to the section above but is a distinct action — e.g. Potty
+   under Diaper. Grid `gap` only applies inside a grid, so sibling grids sit flush
+   without this. Sits between the 6px in-grid gap and the 14px section break so it
+   reads as separate without costing a full section's height on a small screen. */
+.nursery-kiosk .nk-grid.nk-subrow { margin-top: 10px; }
 .nursery-kiosk .nk-btn { background: var(--panel); color: var(--ink); border: 0;
   padding: 14px 6px; border-radius: 10px; font-size: 14px; font-weight: 500;
   min-height: 56px; cursor: pointer; }

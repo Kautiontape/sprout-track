@@ -1,5 +1,5 @@
 import React from 'react';
-import { Moon, Edit, Icon, LampWallDown, Trophy, Baby, Activity, Syringe, Toilet, Camera } from 'lucide-react';
+import { Moon, Edit, Icon, LampWallDown, Trophy, Baby, Activity, Syringe, Toilet, Camera, Milk } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
 import { cn } from "@/src/lib/utils";
 import { activityTileStyles as styles } from './activity-tile.styles';
@@ -16,6 +16,24 @@ export function ActivityTileIcon({
   isButton = false
 }: ActivityTileIconProps & { variant?: ActivityTileVariant; isButton?: boolean }) {
   const variant = variantProp || getActivityVariant(activity);
+
+  // Frozen milk bags have no PNG art, so neither the isButton branch nor the
+  // defaultIcons fallback below would produce anything. Render the lucide glyph
+  // directly, sized for whichever mode we're in.
+  // Timeline rows use the lucide glyph; the tile button falls through to the
+  // illustrated PNG in styles.icon.defaultIcons, matching how potty pairs
+  // <Toilet/> in the timeline with /potty-128.png on the tile.
+  if (variant === 'milkbag' && !isButton) {
+    return (
+      <div aria-hidden="true" className={cn(
+        styles.iconContainer.base,
+        styles.iconContainer.variants[variant],
+        className
+      )}>
+        <Milk className={cn('h-4 w-4', styles.icon.variants[variant])} />
+      </div>
+    );
+  }
 
   let icon = null;
   

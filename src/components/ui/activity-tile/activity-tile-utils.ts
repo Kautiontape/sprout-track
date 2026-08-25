@@ -22,7 +22,10 @@ export const getActivityTime = (activity: ActivityType): string => {
 /**
  * Determines the variant based on the activity type
  */
-export const getActivityVariant = (activity: ActivityType): 'sleep' | 'feed' | 'diaper' | 'potty' | 'note' | 'bath' | 'pump' | 'play' | 'measurement' | 'milestone' | 'medicine' | 'vaccine' | 'food' | 'default' => {
+export const getActivityVariant = (activity: ActivityType): 'sleep' | 'feed' | 'diaper' | 'potty' | 'milkbag' | 'note' | 'bath' | 'pump' | 'play' | 'measurement' | 'milestone' | 'medicine' | 'vaccine' | 'food' | 'default' => {
+  // Frozen milk bags first: `bagCount` is unique across every model, and checking
+  // it up front keeps a future field rename from rerouting these rows.
+  if ('bagCount' in activity) return 'milkbag';
   // Potty must be checked first: a PottyLog has `type` but none of duration/
   // quality/amount/condition, so it would otherwise fall through to 'default'.
   if ('pottyLocation' in activity) return 'potty';

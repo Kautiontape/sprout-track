@@ -16,6 +16,7 @@ export const activityTileStyles = {
       feed: "",
       diaper: "",
       potty: "",
+      milkbag: "",
       note: "",
       bath: "",
       pump: "",
@@ -36,6 +37,7 @@ export const activityTileStyles = {
       feed: "",
       diaper: "",
       potty: "",
+      milkbag: "",
       note: "",
       bath: "",
       pump: "",
@@ -56,6 +58,7 @@ export const activityTileStyles = {
       feed: "text-blue-600",
       diaper: "text-teal-600",
       potty: "text-fuchsia-600",
+      milkbag: "text-cyan-600",
       note: "text-yellow-600",
       bath: "text-orange-600",
       pump: "text-purple-600",
@@ -82,6 +85,7 @@ export const activityTileStyles = {
       medicine: '/med-128.png',
       vaccine: '/vaccine-128.png',
       food: '/food-256.png',
+      milkbag: '/milk-128.png',
       default: '/default-128.png'
     }
   },

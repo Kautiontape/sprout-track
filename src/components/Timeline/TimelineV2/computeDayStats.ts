@@ -37,6 +37,12 @@ export interface DayStats {
   dirtyCount: number;
   poopCount: number;
   pottyCount: number;
+  /** Bags put into the freezer on this day, and their total volume in `preferredUnit`. */
+  bagsFrozen: number;
+  bagsFrozenAmount: number;
+  /** Bags taken out of the freezer on this day, as a positive magnitude. */
+  bagsRemoved: number;
+  bagsRemovedAmount: number;
   medicineStats: Record<string, MedicineStat>;
   supplementStats: Record<string, MedicineStat>;
   noteCount: number;
@@ -84,6 +90,10 @@ export function computeDayStats(
     dirtyCount: 0,
     poopCount: 0,
     pottyCount: 0,
+    bagsFrozen: 0,
+    bagsFrozenAmount: 0,
+    bagsRemoved: 0,
+    bagsRemovedAmount: 0,
     medicineStats: {},
     supplementStats: {},
     noteCount: 0,
@@ -190,12 +200,33 @@ export function computeDayStats(
       }
     }
 
+    // Frozen milk bags. `bagCount` is unique across every model, so this branch
+    // is disjoint from every other discriminator; it sits first for clarity.
+    if ('bagCount' in activity) {
+      const time = new Date((activity as any).time);
+      if (time >= startOfDay && time <= endBound) {
+        stats.hasAnyActivity = true;
+        const bagCount = (activity as any).bagCount as number;
+        const volume = convertVolume(
+          Math.abs(bagCount) * ((activity as any).amountPerBag as number),
+          (activity as any).unitAbbr || 'OZ',
+          preferredUnit
+        );
+        if (bagCount > 0) {
+          stats.bagsFrozen += bagCount;
+          stats.bagsFrozenAmount += volume;
+        } else if (bagCount < 0) {
+          stats.bagsRemoved += -bagCount;
+          stats.bagsRemovedAmount += volume;
+        }
+      }
+    }
     // Potty activities. A PottyLog carries `type` just like a DiaperLog but never
     // `condition`, so today the two are already disjoint. The `else if` on the
     // diaper branch below makes that structural rather than incidental: if a record
     // ever carried both fields, it would count once as potty instead of inflating
     // the diaper counts. A potty catch must never increment a diaper count.
-    if ('pottyLocation' in activity) {
+    else if ('pottyLocation' in activity) {
       const time = new Date((activity as any).time);
       if (time >= startOfDay && time <= endBound) {
         stats.hasAnyActivity = true;

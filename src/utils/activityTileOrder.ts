@@ -6,6 +6,7 @@ export const DEFAULT_ACTIVITY_TILE_ORDER = [
   'sleep',
   'feed',
   'food',
+  'milkbag',
   'diaper',
   'potty',
   'note',
@@ -69,6 +70,17 @@ export function placePottyTile(entry: { order?: string[]; visible?: string[] }):
 }
 
 /**
+ * Place the frozen-milk-bag tile immediately after food when merging saved settings.
+ *
+ * Anchored to food, not pump: `placeTileAfter` falls back to the end of the list
+ * when its anchor is hidden, and families using this feature are exactly the ones
+ * most likely to have hidden the pump tile.
+ */
+export function placeMilkBagTile(entry: { order?: string[]; visible?: string[] }): TilePlacement {
+  return placeTileAfter(entry, 'milkbag', 'food');
+}
+
+/**
  * Append any activity types from the default list that are missing from saved settings.
  */
 export function mergeMissingActivityTiles(entry: {
@@ -98,6 +110,12 @@ export function mergeMissingActivityTiles(entry: {
 
   if (missing.includes('potty')) {
     const placed = placePottyTile({ order, visible });
+    order = placed.order;
+    visible = placed.visible;
+  }
+
+  if (missing.includes('milkbag')) {
+    const placed = placeMilkBagTile({ order, visible });
     order = placed.order;
     visible = placed.visible;
   }

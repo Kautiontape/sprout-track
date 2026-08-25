@@ -4,6 +4,7 @@ import SleepForm from '@/src/components/forms/SleepForm';
 import FeedForm from '@/src/components/forms/FeedForm';
 import DiaperForm from '@/src/components/forms/DiaperForm';
 import PottyForm from '@/src/components/forms/PottyForm';
+import BreastMilkBagForm from '@/src/components/forms/BreastMilkBagForm';
 import NoteForm from '@/src/components/forms/NoteForm';
 import BathForm from '@/src/components/forms/BathForm';
 import PumpForm from '@/src/components/forms/PumpForm';
@@ -35,7 +36,7 @@ const TimelineV2 = ({ babyId, refreshTrigger, initialDate, feedTimerTypes, onLat
   const [selectedActivity, setSelectedActivity] = useState<ActivityType | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoResponse | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterType>(null);
-  const [editModalType, setEditModalType] = useState<'sleep' | 'feed' | 'diaper' | 'potty' | 'medicine' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'play' | 'vaccine' | 'food' | 'photo' | null>(null);
+  const [editModalType, setEditModalType] = useState<'sleep' | 'feed' | 'diaper' | 'potty' | 'milkbag' | 'medicine' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'play' | 'vaccine' | 'food' | 'photo' | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(() => initialDate ?? new Date());
   const [isHeatmapVisible, setIsHeatmapVisible] = useState<boolean>(false);
 
@@ -456,6 +457,8 @@ const TimelineV2 = ({ babyId, refreshTrigger, initialDate, feedTimerTypes, onLat
                      (activity.type === 'DIRTY' || activity.type === 'BOTH');
             case 'potty':
               return 'pottyLocation' in activity;
+            case 'milkbag':
+              return 'bagCount' in activity;
             case 'medicine':
               return 'doseAmount' in activity && 'medicineId' in activity;
             case 'note':
@@ -520,7 +523,7 @@ const TimelineV2 = ({ babyId, refreshTrigger, initialDate, feedTimerTypes, onLat
     }
   };
 
-  const handleEdit = (activity: ActivityType, type: 'sleep' | 'feed' | 'diaper' | 'potty' | 'medicine' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'play' | 'vaccine' | 'food' | 'photo') => {
+  const handleEdit = (activity: ActivityType, type: 'sleep' | 'feed' | 'diaper' | 'potty' | 'milkbag' | 'medicine' | 'note' | 'bath' | 'pump' | 'breast-milk-adjustment' | 'milestone' | 'measurement' | 'play' | 'vaccine' | 'food' | 'photo') => {
     setSelectedActivity(activity);
     setEditModalType(type);
   };
@@ -640,6 +643,14 @@ const TimelineV2 = ({ babyId, refreshTrigger, initialDate, feedTimerTypes, onLat
             babyId={selectedActivity.babyId}
             initialTime={getActivityTime(selectedActivity)}
             activity={'pottyLocation' in selectedActivity ? selectedActivity : undefined}
+            onSuccess={handleFormSuccess}
+          />
+          <BreastMilkBagForm
+            isOpen={editModalType === 'milkbag'}
+            onClose={() => setEditModalType(null)}
+            babyId={selectedActivity.babyId}
+            initialTime={getActivityTime(selectedActivity)}
+            activity={'bagCount' in selectedActivity ? selectedActivity : undefined}
             onSuccess={handleFormSuccess}
           />
           <NoteForm

@@ -37,6 +37,8 @@ export interface FeedActivity {
   feedDuration: number | null;
   notes: string | null;
   bottleType: string | null;
+  breastMilkAmount: number | null;
+  sourcePumpId: string | null;
   caretakerId: string | null;
   caretakerName?: string;
   createdAt: string;
@@ -116,6 +118,23 @@ export interface BreastMilkAdjustmentActivity {
   familyId: string | null;
   time: string;
   amount: number;
+  unitAbbr: string | null;
+  reason: string | null;
+  notes: string | null;
+  caretakerId: string | null;
+  caretakerName?: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface BreastMilkBagActivity {
+  id: string;
+  babyId: string;
+  familyId: string | null;
+  time: string;
+  bagCount: number;
+  amountPerBag: number;
   unitAbbr: string | null;
   reason: string | null;
   notes: string | null;
@@ -211,6 +230,7 @@ export type ActivityType =
   | BathActivity
   | PumpActivity
   | BreastMilkAdjustmentActivity
+  | BreastMilkBagActivity
   | MilestoneActivity
   | MeasurementActivity
   | MedicineLogActivity

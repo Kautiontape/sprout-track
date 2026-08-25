@@ -62,3 +62,9 @@ bugfix-docs/
 temp-development-docs/
 
 test-results/
+
+# Claude Code personal settings
+.claude/settings.local.json
+
+# Playwright MCP artifacts
+.playwright-mcp/

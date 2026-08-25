@@ -85,6 +85,11 @@ const TimelineActivityDetails = ({
       else if ('activities' in activity && 'type' in activity && ['TUMMY_TIME', 'INDOOR_PLAY', 'OUTDOOR_PLAY', 'WALK', 'CUSTOM'].includes((activity as any).type)) {
         onEdit(activity, 'play');
       }
+      // Frozen milk bags before the adjustment check: both models carry `reason`,
+      // and only the field names (`amountPerBag` vs `amount`) keep them apart today.
+      else if ('bagCount' in activity) {
+        onEdit(activity, 'milkbag');
+      }
       // Check for breast milk adjustment before pump
       else if ('reason' in activity && 'amount' in activity && !('type' in activity) && !('leftAmount' in activity)) {
         onEdit(activity, 'breast-milk-adjustment');

@@ -938,7 +938,7 @@ export function NurseryMode() {
         <button type="button" className="nk-btn" onClick={() => commitDiaper('BOTH', t('Diaper both'))}>{t('Both')}</button>
       </div>
 
-      <div className="nk-grid one">
+      <div className="nk-grid one nk-subrow">
         <button type="button" className="nk-btn" onClick={() => setPottyOpen(true)}>
           {t('Potty')}…
         </button>

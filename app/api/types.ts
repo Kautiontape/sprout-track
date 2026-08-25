@@ -1,4 +1,4 @@
-import { Baby, SleepLog, FeedLog, DiaperLog, PottyLog, MoodLog, Note, Caretaker, Settings as PrismaSettings, Gender, SleepType, SleepQuality, FeedType, BreastSide, DiaperType, Mood, PumpLog, PlayLog, Milestone, MilestoneCategory, Measurement, MeasurementType, Medicine, MedicineLog, EmailConfig as PrismaEmailConfig, EmailProviderType, BreastMilkAdjustment, ActiveBreastFeed, ActiveActivity, VaccineLog, VaccineDocument, Food, FoodLog, FoodEnjoyment, BabyAllergen, AllergenType } from '@prisma/client';
+import { Baby, SleepLog, FeedLog, DiaperLog, PottyLog, MoodLog, Note, Caretaker, Settings as PrismaSettings, Gender, SleepType, SleepQuality, FeedType, BreastSide, DiaperType, Mood, PumpLog, PlayLog, Milestone, MilestoneCategory, Measurement, MeasurementType, Medicine, MedicineLog, EmailConfig as PrismaEmailConfig, EmailProviderType, BreastMilkAdjustment, BreastMilkBagLog, ActiveBreastFeed, ActiveActivity, VaccineLog, VaccineDocument, Food, FoodLog, FoodEnjoyment, BabyAllergen, AllergenType } from '@prisma/client';
 import type { MergedAllergen, NewFoodEntry } from '@/src/utils/foodLogUtils';
 
 // Family types
@@ -364,6 +364,32 @@ export interface BreastMilkAdjustmentCreate {
 export interface BreastMilkBalanceResponse {
   balance: number;
   unit: string;
+}
+
+// Breast milk bag (freezer inventory) types
+export type BreastMilkBagLogResponse = Omit<BreastMilkBagLog, 'time' | 'createdAt' | 'updatedAt' | 'deletedAt'> & {
+  time: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+};
+
+export interface BreastMilkBagLogCreate {
+  babyId: string;
+  time: string;
+  bagCount: number; // Positive = frozen, negative = removed. Never zero.
+  amountPerBag: number; // Always positive
+  unitAbbr?: string;
+  reason?: string | null;
+  notes?: string | null;
+}
+
+// Aggregate freezer state, for the Reports card and the form's remembered default
+export interface BreastMilkBagBalanceResponse {
+  bags: number;
+  amount: number;
+  unit: string;
+  lastAmountPerBag: number | null;
 }
 
 // Milestone types

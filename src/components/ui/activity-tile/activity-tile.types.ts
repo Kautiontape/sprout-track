@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
-import { SleepLogResponse, FeedLogResponse, DiaperLogResponse, PottyLogResponse, MoodLogResponse, NoteResponse, BathLogResponse, PumpLogResponse, PlayLogResponse, MeasurementResponse, MilestoneResponse, MedicineLogResponse, VaccineLogResponse, FoodLogResponse } from '@/app/api/types';
+import { SleepLogResponse, FeedLogResponse, DiaperLogResponse, PottyLogResponse, MoodLogResponse, NoteResponse, BathLogResponse, PumpLogResponse, PlayLogResponse, MeasurementResponse, MilestoneResponse, MedicineLogResponse, VaccineLogResponse, FoodLogResponse, BreastMilkBagLogResponse } from '@/app/api/types';
 
-export type ActivityType = SleepLogResponse | FeedLogResponse | DiaperLogResponse | PottyLogResponse | MoodLogResponse | NoteResponse | BathLogResponse | PumpLogResponse | PlayLogResponse | MeasurementResponse | MilestoneResponse | MedicineLogResponse | VaccineLogResponse | (FoodLogResponse & { isFirstTry?: boolean });
+export type ActivityType = SleepLogResponse | FeedLogResponse | DiaperLogResponse | PottyLogResponse | MoodLogResponse | NoteResponse | BathLogResponse | PumpLogResponse | PlayLogResponse | MeasurementResponse | MilestoneResponse | MedicineLogResponse | VaccineLogResponse | BreastMilkBagLogResponse | (FoodLogResponse & { isFirstTry?: boolean });
 
 export type ActivityTileVariant = 'sleep' | 'feed' | 'diaper' | 'potty' | 'milkbag' | 'note' | 'bath' | 'pump' | 'play' | 'measurement' | 'milestone' | 'medicine' | 'vaccine' | 'food' | 'default';
 

@@ -16,7 +16,8 @@ import {
   RotateCw,
   Thermometer,
   PillBottle,
-  Toilet
+  Toilet,
+  Milk
 } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
 import { Card } from '@/src/components/ui/card';
@@ -25,6 +26,7 @@ import { useTheme } from '@/src/context/theme';
 import { cn } from '@/src/lib/utils';
 import { formatWeightDisplay } from '@/src/utils/weightUnits';
 import { isDirtyDiaper } from '@/src/utils/diaperStats';
+import { sumBagsForDay } from '@/src/utils/breastMilkBags';
 
 // Import component-specific files
 import './daily-stats.css';
@@ -133,7 +135,12 @@ export const DailyStats: React.FC<DailyStatsProps> = ({ activities, date, isLoad
     milestoneCount,
     lastMeasurements,
     pumpTotals,
-    medicineCounts
+    medicineCounts,
+    bagsFrozen,
+    bagsFrozenAmount,
+    bagsRemoved,
+    bagsRemovedAmount,
+    bagUnit
   } = useMemo(() => {
     // Set start and end of the selected day
     const startOfDay = new Date(date);
@@ -475,7 +482,24 @@ export const DailyStats: React.FC<DailyStatsProps> = ({ activities, date, isLoad
         unit: data.unit,
         display: `${data.count}x (${data.total}${data.unit})`
       }));
-    
+
+    // Frozen milk bags for the day. The pure helper owns the arithmetic; this
+    // component only owns the date window.
+    //
+    // This file does not have a family-preferred-unit context (unlike the v2
+    // stats, which get `preferredUnit`). It follows the same convention as the
+    // feed totals above at line 216: report in the unit the rows were logged in,
+    // taken from the first row of the day, defaulting to OZ. Summing in OZ while
+    // labelling the result "oz" unconditionally would mislabel an ML family's
+    // volumes, so the unit must come from the data.
+    const bagRows = activities.filter((activity) => {
+      if (!('bagCount' in activity)) return false;
+      const time = new Date((activity as any).time);
+      return time >= startOfDay && time <= endOfDay;
+    }) as any[];
+    const bagUnit = (bagRows[0]?.unitAbbr as string | undefined) || 'OZ';
+    const bagTotals = sumBagsForDay(bagRows, bagUnit);
+
     return {
       awakeTime: formatMinutes(awakeMinutes),
       sleepTime: formatMinutes(totalSleepMinutes),
@@ -491,7 +515,12 @@ export const DailyStats: React.FC<DailyStatsProps> = ({ activities, date, isLoad
       milestoneCount: milestoneCount.toString(),
       lastMeasurements,
       pumpTotals: formattedPumpTotals || 'None',
-      medicineCounts: formattedMedicineCounts
+      medicineCounts: formattedMedicineCounts,
+      bagsFrozen: bagTotals.frozenBags,
+      bagsFrozenAmount: bagTotals.frozenAmount,
+      bagsRemoved: bagTotals.removedBags,
+      bagsRemovedAmount: bagTotals.removedAmount,
+      bagUnit
     };
   }, [activities, date]);
 
@@ -520,6 +549,8 @@ export const DailyStats: React.FC<DailyStatsProps> = ({ activities, date, isLoad
               ...(milestoneCount !== '0' ? [{ icon: <Trophy className="h-3 w-3 text-blue-500" aria-hidden="true" />, label: "Milestones", value: milestoneCount }] : []),
               ...(pumpTotals !== 'None' ? [{ icon: <LampWallDown className="h-3 w-3 text-purple-500" aria-hidden="true" />, label: "Pumped", value: pumpTotals }] : []),
               ...(breastMilkBalance ? [{ icon: <LampWallDown className="h-3 w-3 text-purple-500" aria-hidden="true" />, label: t('Breast Milk Stored'), value: breastMilkBalance }] : []),
+              ...(bagsFrozen > 0 ? [{ icon: <Milk className="h-3 w-3 text-cyan-600" aria-hidden="true" />, label: t('Froze'), value: `${bagsFrozen} ${bagsFrozen === 1 ? t('bag') : t('bags')} (${bagsFrozenAmount} ${t(bagUnit.toLowerCase())})` }] : []),
+              ...(bagsRemoved > 0 ? [{ icon: <Milk className="h-3 w-3 text-cyan-600" aria-hidden="true" />, label: t('Used'), value: `${bagsRemoved} ${bagsRemoved === 1 ? t('bag') : t('bags')} (${bagsRemovedAmount} ${t(bagUnit.toLowerCase())})` }] : []),
               ...(medicineCounts.length > 0 ? medicineCounts.map(med => ({ 
                 icon: <PillBottle className="h-3 w-3 text-green-600" aria-hidden="true" />, 
                 label: med.name, 
@@ -667,6 +698,20 @@ export const DailyStats: React.FC<DailyStatsProps> = ({ activities, date, isLoad
                   icon={<LampWallDown className="h-4 w-4 text-purple-500" aria-hidden="true" />}
                   label={t('Breast Milk Stored')}
                   value={breastMilkBalance}
+                />
+              )}
+              {bagsFrozen > 0 && (
+                <StatItem
+                  icon={<Milk className="h-4 w-4 text-cyan-600" aria-hidden="true" />}
+                  label={t('Froze')}
+                  value={`${bagsFrozen} ${bagsFrozen === 1 ? t('bag') : t('bags')} (${bagsFrozenAmount} ${t(bagUnit.toLowerCase())})`}
+                />
+              )}
+              {bagsRemoved > 0 && (
+                <StatItem
+                  icon={<Milk className="h-4 w-4 text-cyan-600" aria-hidden="true" />}
+                  label={t('Used')}
+                  value={`${bagsRemoved} ${bagsRemoved === 1 ? t('bag') : t('bags')} (${bagsRemovedAmount} ${t(bagUnit.toLowerCase())})`}
                 />
               )}
               {medicineCounts.length > 0 && medicineCounts.map((med, index) => (

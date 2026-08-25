@@ -21,7 +21,8 @@ import {
   Info,
   Toilet,
   Camera,
-  Apple
+  Apple,
+  Milk
 } from 'lucide-react';
 import { diaper, bottleBaby } from '@lucide/lab';
 import { Button } from '@/src/components/ui/button';
@@ -200,6 +201,7 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
       leftBreastFeedMinutes, rightBreastFeedMinutes, solidsAmounts, foodCount,
       wetCount, poopCount, pottyCount, noteCount, bathCount, pumpCount, pumpTotal,
       milestoneCount, measurementCount, playCount, totalPlayMinutes, vaccineCount,
+      bagsFrozen, bagsFrozenAmount, bagsRemoved, bagsRemovedAmount,
     } = dayStats;
 
     const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -528,6 +530,34 @@ const TimelineV2DailyStats: React.FC<TimelineV2DailyStatsProps> = ({
         icon: <LampWallDown className="h-full w-full" aria-hidden="true" />,
         bgColor: 'bg-gray-50',
         iconColor: 'text-[#c084fc]', // purple-400 - matches pump
+        borderColor: 'border-gray-500',
+        bgActiveColor: 'bg-gray-100'
+      });
+    }
+
+    // Frozen bag activity for the day. Two tiles rather than a net figure: on a
+    // day you both froze and thawed, a net of zero would read as "nothing happened".
+    if (bagsFrozen > 0 && enableBreastMilkTracking !== false) {
+      tiles.push({
+        filter: 'milkbag',
+        label: `${Math.round(bagsFrozenAmount * 100) / 100} ${unitSymbol(preferredUnit)} ${t('froze')}`,
+        value: `${bagsFrozen} ${bagsFrozen === 1 ? t('bag') : t('bags')}`,
+        icon: <Milk className="h-full w-full" aria-hidden="true" />,
+        bgColor: 'bg-gray-50',
+        iconColor: 'text-[#0891b2]', // cyan-600 - frozen milk identity color
+        borderColor: 'border-gray-500',
+        bgActiveColor: 'bg-gray-100'
+      });
+    }
+
+    if (bagsRemoved > 0 && enableBreastMilkTracking !== false) {
+      tiles.push({
+        filter: 'milkbag',
+        label: `${Math.round(bagsRemovedAmount * 100) / 100} ${unitSymbol(preferredUnit)} ${t('used')}`,
+        value: `${bagsRemoved} ${bagsRemoved === 1 ? t('bag') : t('bags')}`,
+        icon: <Milk className="h-full w-full" aria-hidden="true" />,
+        bgColor: 'bg-gray-50',
+        iconColor: 'text-[#0891b2]', // cyan-600 - frozen milk identity color
         borderColor: 'border-gray-500',
         bgActiveColor: 'bg-gray-100'
       });

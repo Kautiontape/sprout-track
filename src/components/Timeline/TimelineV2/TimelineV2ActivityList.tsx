@@ -453,6 +453,20 @@ const TimelineV2ActivityList = ({
                                       }
                                     }
                                     
+                                    // Frozen milk bags: `bagCount` is unique across every model.
+                                    if ('bagCount' in activity) {
+                                      const bagCount = (activity as any).bagCount as number;
+                                      const amountPerBag = (activity as any).amountPerBag as number;
+                                      const unit = (activity as any).unitAbbr || 'OZ';
+                                      const total = `${Math.round(Math.abs(bagCount) * amountPerBag * 100) / 100} ${t(unit.toLowerCase())}`;
+                                      let notes: string = (activity as any).notes ?? '';
+                                      if (notes.length > 30) {
+                                        notes = notes.substring(0, 30) + '...';
+                                      }
+                                      const reason = (activity as any).reason ? t((activity as any).reason) : '';
+                                      return [total, reason, notes].filter(Boolean).join(' • ');
+                                    }
+
                                     // Potty before diaper — both carry `type`, but only PottyLog has `pottyLocation`.
                                     if ('pottyLocation' in activity) {
                                       const location = (activity as any).pottyLocation ? t((activity as any).pottyLocation) : '';

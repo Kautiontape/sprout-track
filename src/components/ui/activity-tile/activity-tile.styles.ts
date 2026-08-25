@@ -85,6 +85,7 @@ export const activityTileStyles = {
       medicine: '/med-128.png',
       vaccine: '/vaccine-128.png',
       food: '/food-256.png',
+      milkbag: '/milk-128.png',
       default: '/default-128.png'
     }
   },

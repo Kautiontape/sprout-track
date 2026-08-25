@@ -259,7 +259,7 @@ export default function BreastMilkBagForm({
             >
               {derivedTotal === null
                 ? t('Enter an amount per bag')
-                : `${bagCount} ${t('bags')} × ${parsedAmountPerBag} ${unitSymbol(unitAbbr)} = ${derivedTotal} ${unitSymbol(unitAbbr)}`}
+                : `${bagCount} ${bagCount === 1 ? t('bag') : t('bags')} × ${parsedAmountPerBag} ${unitSymbol(unitAbbr)} = ${derivedTotal} ${unitSymbol(unitAbbr)}`}
             </div>
 
             {isRemoval && (

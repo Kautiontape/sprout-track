@@ -2030,6 +2030,10 @@ git commit -m "milkbags: Add the frozen milk tile to the log entry screen"
 
 ## Task 12: Timeline display
 
+> **Correction applied during implementation (commit `b7537a14`).** Steps 4 and 5 below say to insert the bag branch "immediately before the `if ('pottyLocation' in activity)` branch". In `getActivityDetails` and `getActivityDescription` that potty branch is nested *inside* an outer `if ('type' in activity) { ... }` wrapper. `BreastMilkBagLog` has no `type` field, so a branch placed there is dead code — it never fires, and there is no compile error until something reads `.time` off the narrowed type. Both bag branches were moved to sit immediately *before* the `if ('type' in activity)` wrapper instead, matching how `getActivityIcon`, `getActivityEndpoint`, and `getActivityStyle` already structure the check.
+>
+> Task 14 was checked for the same trap and does **not** have it: `computeDayStats`'s potty branch is at top level, so the instruction there is safe as written.
+
 **Files:**
 - Modify: `src/components/Timeline/types.ts`
 - Modify: `src/components/Timeline/utils.tsx`

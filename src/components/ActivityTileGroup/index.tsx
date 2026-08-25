@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ActivityTile } from '@/src/components/ui/activity-tile';
 import { StatusBubble } from "@/src/components/ui/status-bubble";
-import { SleepLogResponse, FeedLogResponse, DiaperLogResponse, PottyLogResponse, NoteResponse, BathLogResponse, PumpLogResponse, PlayLogResponse, MeasurementResponse, MilestoneResponse, MedicineLogResponse, VaccineLogResponse, FoodLogResponse, ActivitySettings } from '@/app/api/types';
+import { SleepLogResponse, FeedLogResponse, DiaperLogResponse, PottyLogResponse, NoteResponse, BathLogResponse, PumpLogResponse, PlayLogResponse, MeasurementResponse, MilestoneResponse, MedicineLogResponse, VaccineLogResponse, FoodLogResponse, BreastMilkBagLogResponse, ActivitySettings } from '@/app/api/types';
 import { ArrowDownUp, ChevronDown, ChevronUp } from 'lucide-react';
 import { useTheme } from '@/src/context/theme';
 import { useLocalization } from '@/src/context/localization';
@@ -38,6 +38,7 @@ interface ActivityTileGroupProps {
   onFeedClick: () => void;
   onDiaperClick: () => void;
   onPottyClick?: () => void;
+  onMilkBagClick?: () => void;
   onNoteClick: () => void;
   onBathClick: () => void;
   onPumpClick: () => void;
@@ -75,6 +76,7 @@ export function ActivityTileGroup({
   onFeedClick,
   onDiaperClick,
   onPottyClick = () => {},
+  onMilkBagClick = () => {},
   onNoteClick,
   onBathClick,
   onPumpClick,
@@ -629,6 +631,35 @@ export function ActivityTileGroup({
               onClick={() => {
                 updateUnlockTimer();
                 onPottyClick();
+              }}
+            />
+          </div>
+        );
+      case 'milkbag':
+        return (
+          <div key="milkbag" className="relative w-[82px] min-h-24 flex-shrink-0 snap-center">
+            <ActivityTile
+              activity={{
+                id: 'milkbag-button',
+                babyId: selectedBaby.id,
+                time: new Date().toISOString(),
+                bagCount: 1,
+                amountPerBag: 4,
+                unitAbbr: 'OZ',
+                reason: null,
+                notes: '',
+                caretakerId: null,
+                familyId: null,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                deletedAt: null
+              } as unknown as BreastMilkBagLogResponse}
+              title={t('Frozen Milk')}
+              variant="milkbag"
+              isButton={true}
+              onClick={() => {
+                updateUnlockTimer();
+                onMilkBagClick();
               }}
             />
           </div>

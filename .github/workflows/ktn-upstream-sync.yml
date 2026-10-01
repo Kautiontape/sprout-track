@@ -1,0 +1,21 @@
+name: ktn upstream sync
+# Weekly heads-up when Oak-and-Sprout/sprout-track tags a new release (fork-sync notify mode: no
+# branch work). Added 2026-10-01 so upstream updates to this fork are
+# reported, per ansible-fleet docs/superpowers/plans/2026-10-01-fleet-update-coverage.md.
+on:
+  schedule:
+    - cron: '0 13 * * 1' # weekly Monday check
+  workflow_dispatch:
+concurrency:
+  group: fork-sync-${{ github.repository }}
+  cancel-in-progress: false
+permissions:
+  contents: write
+jobs:
+  sync:
+    uses: Kautiontape/fork-sync/.github/workflows/fork-sync.yml@main
+    with:
+      upstream: Oak-and-Sprout/sprout-track
+      mode: notify
+      tag_pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+    secrets: inherit

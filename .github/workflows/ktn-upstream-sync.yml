@@ -11,6 +11,7 @@ concurrency:
   cancel-in-progress: false
 permissions:
   contents: write
+  pull-requests: write # requested by the reusable workflow even in notify mode
 jobs:
   sync:
     uses: Kautiontape/fork-sync/.github/workflows/fork-sync.yml@main
